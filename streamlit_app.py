@@ -33,7 +33,7 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ------------------------------------------------------------------
-# LISTA DE PROCESOS
+# LISTA DE PROCESOS (sin cambios)
 # ------------------------------------------------------------------
 PROCESOS = [
     "ADHERENCIA AL TRATAMIENTO", "ADMISIONES", "ALMACÉN", "AMBIENTE FÍSICO",
@@ -63,6 +63,39 @@ PROCESOS = [
 ]
 
 # ------------------------------------------------------------------
+# MAPEO DE TIPO DE DOCUMENTO SEGÚN CÓDIGO
+# ------------------------------------------------------------------
+def obtener_tipo_documento(codigo):
+    """
+    Extrae la primera parte del código (antes del primer guion) y devuelve
+    el tipo de documento en texto según el mapeo.
+    """
+    if not codigo:
+        return "documento"
+    # Obtener la parte antes del primer guion
+    parte = codigo.split('-')[0].strip().upper()
+    mapeo = {
+        "D": "política o directriz",
+        "C": "caracterización de proceso",
+        "PG": "programa",
+        "M": "manual",
+        "P": "procedimiento",
+        "G": "guía",
+        "PR": "protocolo",
+        "I": "instructivo",
+        "RT": "ruta",
+        "R": "formato, ficha de indicador y cronograma"
+    }
+    # Buscar coincidencia exacta (para PG, PR, RT primero)
+    if parte in mapeo:
+        return mapeo[parte]
+    # Si no, buscar por primera letra (para D, C, M, P, G, I, R)
+    primera = parte[0]
+    if primera in mapeo:
+        return mapeo[primera]
+    return "documento"
+
+# ------------------------------------------------------------------
 # FUNCIONES AUXILIARES
 # ------------------------------------------------------------------
 def extraer_texto_pdf(archivo):
@@ -84,7 +117,7 @@ def analizar_documento(texto):
     - "codigo"
     - "version"
     - "documento"
-    - "vigencia" (en formato DD/MM/AAAA)
+    - "vigencia" (en formato DD/MM/AAAA, por ejemplo 21/10/2024)
     - "importancia" (máx 15 palabras)
 
     Lista de procesos:
@@ -103,18 +136,25 @@ def analizar_documento(texto):
     else:
         raise ValueError("No se encontró JSON en la respuesta")
 
-def enviar_correo(destinatarios, asunto, cuerpo):
+def enviar_correo(destinatarios_para, destinatarios_cc, asunto, cuerpo):
+    """
+    Envía correo con destinatarios en Para y en CC.
+    """
     try:
         msg = MIMEMultipart()
         msg["From"] = SMTP_USER
-        msg["To"] = ", ".join(destinatarios)
+        msg["To"] = ", ".join(destinatarios_para)
+        if destinatarios_cc:
+            msg["Cc"] = ", ".join(destinatarios_cc)
         msg["Subject"] = asunto
         msg.attach(MIMEText(cuerpo, "plain"))
 
+        # La lista de destinatarios total incluye los de Cc para que el servidor los envíe
+        todos_destinatarios = destinatarios_para + destinatarios_cc
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
         server.login(SMTP_USER, SMTP_PASSWORD)
-        server.send_message(msg)
+        server.sendmail(SMTP_USER, todos_destinatarios, msg.as_string())
         server.quit()
         return True
     except Exception as e:
@@ -201,38 +241,50 @@ if archivos:
     # 3. Configurar destinatarios y enviar correo
     # ------------------------------------------------------------------
     if documentos_info:
-        destinatarios_input = st.text_input(
-            "Correos destinatarios (separados por coma)",
+        destinatarios_para_input = st.text_input(
+            "Correos destinatarios principales (separados por coma)",
             value="asistenteprocesosermita@gmail.com"
         )
         if st.button("📨 Enviar correo con todos los documentos"):
-            destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
-            if not destinatarios_lista:
-                st.error("Debes ingresar al menos un destinatario.")
+            destinatarios_para = [d.strip() for d in destinatarios_para_input.split(",") if d.strip()]
+            if not destinatarios_para:
+                st.error("Debes ingresar al menos un destinatario principal.")
                 st.stop()
 
-            # Construir el cuerpo del correo con formato solicitado
+            # CC fijos obligatorios
+            cc_fijos = [
+                "coord-procesos@clinicalaermitadecartagena.com",
+                "profesional procesos2@clinicalaermitadecartagena.com",
+                "asistente-procesos@clinicalaermitadecartagena.com",
+                "aprendiz-procesos2@clinicalaermitadecartagena.com"
+            ]
+
+            # Construir el cuerpo del correo
             cuerpo = "Buen día,\n\n"
             for doc in documentos_info:
                 datos = doc["datos"]
                 tipo = doc["tipo"].lower()
                 fecha_vigencia = datos.get("vigencia", "fecha no especificada")
                 accion = "creado" if tipo == "creación" else "actualizado"
-                codigo_doc = datos.get("codigo", "sin código")
-                nombre_doc = datos.get("documento", "sin título")
+                codigo = datos.get("codigo", "sin código")
+                nombre = datos.get("documento", "sin título")
+                tipo_documento = obtener_tipo_documento(codigo)
 
-                cuerpo += f"Les informo que se encuentra disponible para su consulta el registro **{codigo_doc} {nombre_doc}** de la empresa CLÍNICA LA ERMITA, {accion} el {fecha_vigencia}.\n\n"
+                cuerpo += f"Les informo que se encuentra disponible para su consulta el {tipo_documento} **{codigo} {nombre}** de la empresa CLÍNICA LA ERMITA, {accion} el {fecha_vigencia}.\n\n"
                 cuerpo += f"Fecha de vigencia: {fecha_vigencia}\n\n"
 
             cuerpo += "Pueden acceder al documento en la plataforma IT SOLUTION siguiendo esta ruta:\n"
             cuerpo += "• Ruta: Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.\n"
             cuerpo += "• Enlace: http://190.131.206.250:8085/ItSolution/index.jsp\n\n"
-            cuerpo += "Agradecemos su atención y cumplimiento.\n\nCordialmente,\nÁrea de procesos\nClínica La Ermita"
+            cuerpo += "Agradecemos su atención y cumplimiento.\n\n"
+            cuerpo += "Cordialmente,\nÁrea de procesos\nClínica La Ermita\n\n"
+            cuerpo += "Nota: Este mensaje ha sido generado automáticamente por un sistema de inteligencia artificial. Por favor, no responder a este correo.\n"
+            cuerpo += "Si desea comunicarse con el área de procesos, puede hacerlo a través de: " + ", ".join(cc_fijos) + "."
 
             asunto = "Actualización de Documentos - Clínica La Ermita"
 
             with st.spinner("Enviando correo..."):
-                if enviar_correo(destinatarios_lista, asunto, cuerpo):
+                if enviar_correo(destinatarios_para, cc_fijos, asunto, cuerpo):
                     st.success("✅ Correo enviado correctamente.")
                 else:
                     st.error("❌ Falló el envío. Revisa la configuración SMTP.")
