@@ -33,7 +33,7 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ------------------------------------------------------------------
-# LISTA DE PROCESOS (misma que usabas)
+# LISTA DE PROCESOS
 # ------------------------------------------------------------------
 PROCESOS = [
     "ADHERENCIA AL TRATAMIENTO", "ADMISIONES", "ALMACÉN", "AMBIENTE FÍSICO",
@@ -63,7 +63,7 @@ PROCESOS = [
 ]
 
 # ------------------------------------------------------------------
-# EXTRACCIÓN DE TEXTO
+# FUNCIONES AUXILIARES
 # ------------------------------------------------------------------
 def extraer_texto_pdf(archivo):
     texto = ""
@@ -76,9 +76,6 @@ def extraer_texto_docx(archivo):
     doc = docx.Document(archivo)
     return "\n".join([p.text for p in doc.paragraphs])
 
-# ------------------------------------------------------------------
-# LLAMADA A GEMINI
-# ------------------------------------------------------------------
 def analizar_documento(texto):
     prompt = f"""
     Eres un asistente que extrae información de documentos internos de una clínica.
@@ -99,7 +96,6 @@ def analizar_documento(texto):
     model = genai.GenerativeModel('gemini-2.5-flash')
     response = model.generate_content(prompt)
     texto_respuesta = response.text
-    # Extraer JSON
     inicio = texto_respuesta.find('{')
     fin = texto_respuesta.rfind('}') + 1
     if inicio != -1 and fin != 0:
@@ -107,9 +103,6 @@ def analizar_documento(texto):
     else:
         raise ValueError("No se encontró JSON en la respuesta")
 
-# ------------------------------------------------------------------
-# ENVÍO DE CORREO
-# ------------------------------------------------------------------
 def enviar_correo(destinatarios, asunto, cuerpo):
     try:
         msg = MIMEMultipart()
@@ -131,75 +124,116 @@ def enviar_correo(destinatarios, asunto, cuerpo):
 # ------------------------------------------------------------------
 # INTERFAZ STREAMLIT
 # ------------------------------------------------------------------
-st.set_page_config(page_title="Divulgaciones AI", layout="centered")
-st.title("📢 Divulgaciones Automáticas")
-st.markdown("Sube un documento (PDF o Word) y se enviará un correo con los datos extraídos por IA.")
+st.set_page_config(page_title="Divulgaciones AI - Múltiples Documentos", layout="centered")
+st.title("📢 Divulgaciones Automáticas (Múltiples Documentos)")
+st.markdown("Carga hasta 5 documentos (PDF/Word). Para cada uno, la IA extraerá los datos y podrás definir si es **Creación** o **Actualización**. Luego se enviará un único correo con el resumen de todos.")
 
-archivo = st.file_uploader("Documento", type=["pdf", "docx"])
+# ------------------------------------------------------------------
+# 1. Carga de múltiples archivos
+# ------------------------------------------------------------------
+archivos = st.file_uploader(
+    "Selecciona los documentos (máx 5)",
+    type=["pdf", "docx"],
+    accept_multiple_files=True
+)
 
-if archivo is not None:
-    st.write(f"**Archivo:** {archivo.name}")
+if archivos and len(archivos) > 5:
+    st.warning("Máximo 5 documentos. Solo se procesarán los primeros 5.")
+    archivos = archivos[:5]
 
-    # Opción: ingresar destinatarios manualmente o usar lista predefinida
-    destinatarios = st.text_input(
-        "Correos destinatarios (separados por coma)",
-        value="asistente-procesos@clinicalaermitadecartagena.com"
-    )
+if archivos:
+    # ------------------------------------------------------------------
+    # 2. Procesar cada archivo
+    # ------------------------------------------------------------------
+    documentos_info = []  # lista de diccionarios con datos
+    st.write("---")
+    for i, archivo in enumerate(archivos, start=1):
+        st.subheader(f"Documento {i}: {archivo.name}")
 
-    if st.button("🚀 Procesar y enviar"):
-        # 1. Extraer texto
-        with st.spinner("Extrayendo texto del documento..."):
+        # Extraer texto
+        with st.spinner(f"Extrayendo texto de {archivo.name}..."):
             if archivo.type == "application/pdf":
                 texto = extraer_texto_pdf(archivo)
             else:
                 texto = extraer_texto_docx(archivo)
 
         if not texto.strip():
-            st.error("No se pudo extraer texto. ¿El documento es escaneado?")
-            st.stop()
+            st.error(f"No se pudo extraer texto del documento {archivo.name}. Se omite.")
+            continue
 
-        # 2. Analizar con Gemini
-        with st.spinner("Analizando con Gemini..."):
+        # Analizar con Gemini
+        with st.spinner(f"Analizando {archivo.name} con IA..."):
             try:
                 datos = analizar_documento(texto)
             except Exception as e:
-                st.error(f"Error en IA: {e}")
-                st.stop()
+                st.error(f"Error en IA para {archivo.name}: {e}")
+                continue
 
-        st.success("Datos extraídos:")
-        st.json(datos)
+        # Mostrar datos extraídos y permitir edición
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.json(datos)
+        with col2:
+            tipo = st.radio(
+                "Tipo de operación",
+                ["Creación", "Actualización"],
+                key=f"tipo_{i}",
+                horizontal=True
+            )
 
-        # 3. Armar correo
-        asunto = f"Actualización de Documento - {datos.get('documento', 'Sin título')}"
-        cuerpo = f"""
-Buen día,
+        # Botón para editar manualmente si es necesario
+        with st.expander("✏️ Editar datos manualmente"):
+            datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=PROCESOS.index(datos.get("proceso", PROCESOS[0])), key=f"proceso_{i}")
+            datos["codigo"] = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{i}")
+            datos["version"] = st.text_input("Versión", datos.get("version", ""), key=f"version_{i}")
+            datos["documento"] = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{i}")
+            datos["vigencia"] = st.text_input("Vigencia", datos.get("vigencia", ""), key=f"vigencia_{i}")
+            datos["importancia"] = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{i}", height=80)
 
-Cordial saludo.
+        documentos_info.append({
+            "nombre_archivo": archivo.name,
+            "datos": datos,
+            "tipo": tipo
+        })
+        st.write("---")
 
-Se ha procesado el documento:
-
-Proceso: {datos.get('proceso')}
-Código: {datos.get('codigo')}
-Versión: {datos.get('version')}
-Documento: {datos.get('documento')}
-Vigencia: {datos.get('vigencia')}
-Importancia: {datos.get('importancia')}
-
-El formato está disponible en la plataforma IT SOLUTION siguiendo la ruta:
-Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre o código.
-
-Enlace de acceso:
-http://190.131.206.250:8085/ItSolution/index.jsp
-
-Cordialmente,
-"""
-        # 4. Enviar correo
-        with st.spinner("Enviando correo..."):
-            destinatarios_lista = [d.strip() for d in destinatarios.split(",") if d.strip()]
+    # ------------------------------------------------------------------
+    # 3. Configurar destinatarios y enviar correo
+    # ------------------------------------------------------------------
+    if documentos_info:
+        destinatarios_input = st.text_input(
+            "Correos destinatarios (separados por coma)",
+            value="asistenteprocesosermita@gmail.com"  # puedes poner el predeterminado
+        )
+        if st.button("📨 Enviar correo con todos los documentos"):
+            destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
             if not destinatarios_lista:
                 st.error("Debes ingresar al menos un destinatario.")
                 st.stop()
-            if enviar_correo(destinatarios_lista, asunto, cuerpo):
-                st.success("✅ Correo enviado correctamente.")
-            else:
-                st.error("❌ Falló el envío. Revisa la configuración SMTP.")
+
+            # Construir el cuerpo del correo con formato similar al ejemplo
+            cuerpo = "Buen día,\n\n"
+            for doc in documentos_info:
+                datos = doc["datos"]
+                tipo = doc["tipo"].lower()
+                # La fecha se toma de vigencia; si no está, se usa la fecha actual
+                fecha_vigencia = datos.get("vigencia", "fecha no especificada")
+                # Texto según tipo
+                if tipo == "creación":
+                    accion = "creado"
+                else:
+                    accion = "actualizado"
+
+                cuerpo += f"Les informo que se encuentra disponible para su consulta el registro **{datos.get('codigo', 'sin código')} {datos.get('documento', 'sin título')}** de la empresa CLÍNICA LA ERMITA, {accion} el {fecha_vigencia}.\n\n"
+            cuerpo += "Pueden acceder al documento en la plataforma IT SOLUTION siguiendo esta ruta:\n"
+            cuerpo += "• Ruta: Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.\n"
+            cuerpo += "• Enlace: http://190.131.206.250:8085/ItSolution/index.jsp\n\n"
+            cuerpo += "Agradecemos su atención y cumplimiento.\n\nCordialmente,\nÁrea de procesos\nClínica La Ermita"
+
+            asunto = "Actualización de Documentos - Clínica La Ermita"
+
+            with st.spinner("Enviando correo..."):
+                if enviar_correo(destinatarios_lista, asunto, cuerpo):
+                    st.success("✅ Correo enviado correctamente.")
+                else:
+                    st.error("❌ Falló el envío. Revisa la configuración SMTP.")
