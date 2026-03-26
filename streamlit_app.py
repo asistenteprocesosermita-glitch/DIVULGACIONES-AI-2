@@ -79,12 +79,12 @@ def extraer_texto_docx(archivo):
 def analizar_documento(texto):
     prompt = f"""
     Eres un asistente que extrae información de documentos internos de una clínica.
-    Devuelve ÚNICAMENTE un JSON válido con las claves:
+    Devuelve ÚNICAMENTE un objeto JSON válido con las claves:
     - "proceso" (debe coincidir exactamente con la lista)
     - "codigo"
     - "version"
     - "documento"
-    - "vigencia"
+    - "vigencia" (en formato DD/MM/AAAA)
     - "importancia" (máx 15 palabras)
 
     Lista de procesos:
@@ -145,7 +145,7 @@ if archivos:
     # ------------------------------------------------------------------
     # 2. Procesar cada archivo
     # ------------------------------------------------------------------
-    documentos_info = []  # lista de diccionarios con datos
+    documentos_info = []
     st.write("---")
     for i, archivo in enumerate(archivos, start=1):
         st.subheader(f"Documento {i}: {archivo.name}")
@@ -203,7 +203,7 @@ if archivos:
     if documentos_info:
         destinatarios_input = st.text_input(
             "Correos destinatarios (separados por coma)",
-            value="asistenteprocesosermita@gmail.com"  # puedes poner el predeterminado
+            value="asistenteprocesosermita@gmail.com"
         )
         if st.button("📨 Enviar correo con todos los documentos"):
             destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
@@ -211,20 +211,19 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario.")
                 st.stop()
 
-            # Construir el cuerpo del correo con formato similar al ejemplo
+            # Construir el cuerpo del correo con formato solicitado
             cuerpo = "Buen día,\n\n"
             for doc in documentos_info:
                 datos = doc["datos"]
                 tipo = doc["tipo"].lower()
-                # La fecha se toma de vigencia; si no está, se usa la fecha actual
                 fecha_vigencia = datos.get("vigencia", "fecha no especificada")
-                # Texto según tipo
-                if tipo == "creación":
-                    accion = "creado"
-                else:
-                    accion = "actualizado"
+                accion = "creado" if tipo == "creación" else "actualizado"
+                codigo_doc = datos.get("codigo", "sin código")
+                nombre_doc = datos.get("documento", "sin título")
 
-                cuerpo += f"Les informo que se encuentra disponible para su consulta el registro **{datos.get('codigo', 'sin código')} {datos.get('documento', 'sin título')}** de la empresa CLÍNICA LA ERMITA, {accion} el {fecha_vigencia}.\n\n"
+                cuerpo += f"Les informo que se encuentra disponible para su consulta el registro **{codigo_doc} {nombre_doc}** de la empresa CLÍNICA LA ERMITA, {accion} el {fecha_vigencia}.\n\n"
+                cuerpo += f"Fecha de vigencia: {fecha_vigencia}\n\n"
+
             cuerpo += "Pueden acceder al documento en la plataforma IT SOLUTION siguiendo esta ruta:\n"
             cuerpo += "• Ruta: Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.\n"
             cuerpo += "• Enlace: http://190.131.206.250:8085/ItSolution/index.jsp\n\n"
