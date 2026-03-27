@@ -34,7 +34,7 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ------------------------------------------------------------------
-# LISTA DE PROCESOS
+# LISTA DE PROCESOS (completa)
 # ------------------------------------------------------------------
 PROCESOS = [
     "ADHERENCIA AL TRATAMIENTO", "ADMISIONES", "ALMACÉN", "AMBIENTE FÍSICO",
@@ -64,7 +64,33 @@ PROCESOS = [
 ]
 
 # ------------------------------------------------------------------
-# FUNCIONES AUXILIARES
+# MAPEO DE TIPO DE DOCUMENTO SEGÚN CÓDIGO
+# ------------------------------------------------------------------
+def get_tipo_documento(codigo):
+    if not codigo:
+        return "documento"
+    partes = codigo.split('-')
+    prefijo = partes[0].upper() if partes else ""
+    mapeo = {
+        "D": "Política o Directriz",
+        "C": "Caracterización de proceso",
+        "PG": "Programa",
+        "M": "Manual",
+        "P": "Procedimiento",
+        "G": "Guía",
+        "PR": "Protocolo",
+        "I": "Instructivo",
+        "RT": "Ruta",
+        "R": "Formato"
+    }
+    if prefijo in mapeo:
+        return mapeo[prefijo]
+    if len(prefijo) == 1 and prefijo in mapeo:
+        return mapeo[prefijo]
+    return "documento"
+
+# ------------------------------------------------------------------
+# EXTRACCIÓN DE TEXTO
 # ------------------------------------------------------------------
 def extraer_texto_pdf(archivo):
     texto = ""
@@ -77,6 +103,9 @@ def extraer_texto_docx(archivo):
     doc = docx.Document(archivo)
     return "\n".join([p.text for p in doc.paragraphs])
 
+# ------------------------------------------------------------------
+# ANÁLISIS CON GEMINI
+# ------------------------------------------------------------------
 def analizar_documento(texto):
     prompt = f"""
     Eres un asistente que extrae información de documentos internos de una clínica.
@@ -104,47 +133,18 @@ def analizar_documento(texto):
     else:
         raise ValueError("No se encontró JSON en la respuesta")
 
-def get_tipo_documento(codigo):
-    """
-    Retorna el tipo de documento según la primera parte del código (antes del primer guion).
-    Mapeo según tabla proporcionada.
-    """
-    if not codigo:
-        return "documento"
-    # Extraer prefijo (todo hasta el primer guion)
-    partes = codigo.split('-')
-    prefijo = partes[0].upper() if partes else ""
-    mapeo = {
-        "D": "Política o Directriz",
-        "C": "Caracterización de proceso",
-        "PG": "Programa",
-        "M": "Manual",
-        "P": "Procedimiento",
-        "G": "Guía",
-        "PR": "Protocolo",
-        "I": "Instructivo",
-        "RT": "Ruta",
-        "R": "Formato"
-    }
-    # Para prefijos de 2 letras como PG, PR, RT
-    if prefijo in mapeo:
-        return mapeo[prefijo]
-    # Para prefijos de 1 letra
-    elif len(prefijo) == 1 and prefijo in mapeo:
-        return mapeo[prefijo]
-    else:
-        return "documento"
-
-def enviar_correo(destinatarios, cc_list, asunto, cuerpo):
+# ------------------------------------------------------------------
+# ENVÍO DE CORREO CON HTML
+# ------------------------------------------------------------------
+def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
     try:
         msg = MIMEMultipart()
         msg["From"] = SMTP_USER
         msg["To"] = ", ".join(destinatarios)
         msg["Cc"] = ", ".join(cc_list)
         msg["Subject"] = asunto
-        msg.attach(MIMEText(cuerpo, "plain"))
+        msg.attach(MIMEText(cuerpo_html, "html"))
 
-        # Los destinatarios reales son Para + Cc
         todos = destinatarios + cc_list
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
@@ -163,9 +163,7 @@ st.set_page_config(page_title="Divulgaciones AI - Múltiples Documentos", layout
 st.title("📢 Divulgaciones Automáticas (Múltiples Documentos)")
 st.markdown("Carga hasta 5 documentos (PDF/Word). Para cada uno, la IA extraerá los datos y podrás definir si es **Creación** o **Actualización**. Luego se enviará un único correo con el resumen de todos.")
 
-# ------------------------------------------------------------------
-# 0. Selección de empresa
-# ------------------------------------------------------------------
+# Selección de empresa
 empresa_opciones = {
     "Clínica La Ermita": "CLÍNICA LA ERMITA",
     "Red Integrada de Ambulancia": "RED INTEGRADA DE AMBULANCIA",
@@ -174,9 +172,7 @@ empresa_opciones = {
 empresa_seleccionada = st.selectbox("Empresa destinataria de la divulgación", list(empresa_opciones.keys()))
 empresa_nombre = empresa_opciones[empresa_seleccionada]
 
-# ------------------------------------------------------------------
-# 1. Carga de múltiples archivos
-# ------------------------------------------------------------------
+# Carga de archivos
 archivos = st.file_uploader(
     "Selecciona los documentos (máx 5)",
     type=["pdf", "docx"],
@@ -188,73 +184,61 @@ if archivos and len(archivos) > 5:
     archivos = archivos[:5]
 
 if archivos:
-    # ------------------------------------------------------------------
-    # 2. Procesar cada archivo
-    # ------------------------------------------------------------------
-    documentos_info = []
-    st.write("---")
-    for i, archivo in enumerate(archivos, start=1):
-        st.subheader(f"Documento {i}: {archivo.name}")
+    # Guardamos los archivos en session_state para análisis bajo demanda
+    st.session_state["archivos_subidos"] = archivos
+    st.info("Documentos cargados. Haz clic en 'Procesar y enviar' para analizarlos con IA y enviar el correo.")
 
-        # Extraer texto
-        with st.spinner(f"Extrayendo texto de {archivo.name}..."):
+    if st.button("🚀 Procesar y enviar correo"):
+        documentos_info = []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        for i, archivo in enumerate(archivos):
+            status_text.text(f"Procesando {archivo.name}...")
             if archivo.type == "application/pdf":
                 texto = extraer_texto_pdf(archivo)
             else:
                 texto = extraer_texto_docx(archivo)
 
-        if not texto.strip():
-            st.error(f"No se pudo extraer texto del documento {archivo.name}. Se omite.")
-            continue
+            if not texto.strip():
+                st.error(f"No se pudo extraer texto de {archivo.name}. Se omite.")
+                continue
 
-        # Analizar con Gemini
-        with st.spinner(f"Analizando {archivo.name} con IA..."):
             try:
                 datos = analizar_documento(texto)
             except Exception as e:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 continue
 
-        # Mostrar datos extraídos y permitir edición
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.json(datos)
-        with col2:
-            tipo = st.radio(
-                "Tipo de operación",
-                ["Creación", "Actualización"],
-                key=f"tipo_{i}",
-                horizontal=True
-            )
+            # Mostrar datos y permitir edición
+            with st.expander(f"Documento {i+1}: {archivo.name} - Editar datos"):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.json(datos)
+                with col2:
+                    tipo = st.radio("Tipo", ["Creación", "Actualización"], key=f"tipo_{i}", horizontal=True)
 
-        # Edición manual
-        with st.expander("✏️ Editar datos manualmente"):
-            datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=PROCESOS.index(datos.get("proceso", PROCESOS[0])), key=f"proceso_{i}")
-            datos["codigo"] = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{i}")
-            datos["version"] = st.text_input("Versión", datos.get("version", ""), key=f"version_{i}")
-            datos["documento"] = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{i}")
-            datos["vigencia"] = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{i}")
-            datos["importancia"] = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{i}", height=80)
+                # Permitir edición manual
+                datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=PROCESOS.index(datos.get("proceso", PROCESOS[0])), key=f"proceso_{i}")
+                datos["codigo"] = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{i}")
+                datos["version"] = st.text_input("Versión", datos.get("version", ""), key=f"version_{i}")
+                datos["documento"] = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{i}")
+                datos["vigencia"] = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{i}")
+                datos["importancia"] = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{i}", height=80)
 
-        documentos_info.append({
-            "nombre_archivo": archivo.name,
-            "datos": datos,
-            "tipo": tipo
-        })
-        st.write("---")
+            documentos_info.append({
+                "nombre": archivo.name,
+                "datos": datos,
+                "tipo": tipo
+            })
+            progress_bar.progress((i+1)/len(archivos))
 
-    # ------------------------------------------------------------------
-    # 3. Configurar destinatarios (Para) y enviar correo
-    # ------------------------------------------------------------------
-    if documentos_info:
-        # Correos fijos en CC (siempre)
-        cc_fijos = [
-            "coord-procesos@clinicalaermitadecartagena.com",
-            "profesionalprocesos2@clinicalaermitadecartagena.com",
-            "asistente-procesos@clinicalaermitadecartagena.com",
-            "aprendiz-procesos2@clinicalaermitadecartagena.com"
-        ]
+        status_text.text("¡Análisis completado!")
+        st.session_state["documentos_info"] = documentos_info
 
+    # Si ya hay documentos analizados, mostrar opciones de envío
+    if "documentos_info" in st.session_state and st.session_state["documentos_info"]:
+        st.divider()
         destinatarios_input = st.text_input(
             "Correos destinatarios (Para, separados por coma)",
             value="asistenteprocesosermita@gmail.com"
@@ -266,37 +250,94 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            # Construir cuerpo del correo
-            fecha_actual = datetime.now().strftime("%Y.%m.%d")
-            cuerpo = "Buen día,\n\n"
+            # Correos fijos en CC
+            cc_fijos = [
+                "coord-procesos@clinicalaermitadecartagena.com",
+                "profesionalprocesos2@clinicalaermitadecartagena.com",
+                "asistente-procesos@clinicalaermitadecartagena.com",
+                "aprendiz-procesos2@clinicalaermitadecartagena.com"
+            ]
 
-            for doc in documentos_info:
+            # Construir HTML para cada documento
+            docs_html = ""
+            for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
                 tipo = doc["tipo"].lower()
                 accion = "creado" if tipo == "creación" else "actualizado"
                 fecha_vigencia = datos.get("vigencia", "fecha no especificada")
                 codigo = datos.get("codigo", "sin código")
                 nombre_doc = datos.get("documento", "sin título")
+                version = datos.get("version", "")
+                importancia = datos.get("importancia", "")
                 tipo_doc = get_tipo_documento(codigo)
 
-                cuerpo += f"Les informo que se encuentra disponible para su consulta el **{tipo_doc} {codigo} {nombre_doc}** de la empresa {empresa_nombre}, {accion} el {fecha_vigencia}.\n\n"
-                cuerpo += f"Fecha de vigencia: {fecha_vigencia}\n\n"
+                # Bloque para cada documento (repite la tabla, o puedes generar una tabla única con varias filas)
+                docs_html += f"""
+                <div style="margin-bottom: 30px; border: 1px solid #ddd; border-radius: 8px; padding: 15px; background-color: white;">
+                    <p style="font-size: 14px; color: #003366; margin-bottom: 15px;">
+                        <strong>{tipo_doc} {codigo} {nombre_doc}</strong> – {accion} el {fecha_vigencia}
+                    </p>
+                    <table style="width: 100%; border-collapse: collapse; background-color: white;">
+                        <tr>
+                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; width: 35%; border: 1px solid #003366;">VERSIÓN</th>
+                            <td style="padding: 8px; border: 1px solid #ccc;">{version}</td>
+                        </tr>
+                        <tr>
+                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">CÓDIGO</th>
+                            <td style="padding: 8px; border: 1px solid #ccc;">{codigo}</td>
+                        </tr>
+                        <tr>
+                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">DOCUMENTO</th>
+                            <td style="padding: 8px; border: 1px solid #ccc;">{nombre_doc}</td>
+                        </tr>
+                        <tr>
+                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">VIGENCIA</th>
+                            <td style="padding: 8px; border: 1px solid #ccc;">{fecha_vigencia}</td>
+                        </tr>
+                        <tr>
+                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">IMPORTANCIA</th>
+                            <td style="padding: 8px; border: 1px solid #ccc;">{importancia}</td>
+                        </tr>
+                    </table>
+                </div>
+                """
 
-            cuerpo += "Pueden acceder al documento en la plataforma IT SOLUTION siguiendo esta ruta:\n"
-            cuerpo += "• Ruta: Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.\n"
-            cuerpo += "• Enlace: http://190.131.206.250:8085/ItSolution/index.jsp\n\n"
-            cuerpo += "Agradecemos su atención y cumplimiento.\n\n"
-            cuerpo += "---\n"
-            cuerpo += "*Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.*\n"
-            cuerpo += "Si desea comunicarse con el área de procesos, escriba a:\n"
-            cuerpo += ", ".join(cc_fijos) + "\n\n"
-            cuerpo += "Cordialmente,\nÁrea de procesos\nClínica La Ermita"
+            # Plantilla HTML completa del correo
+            cuerpo_html = f"""
+            <div style="max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 25px; background-color: #e8f1f8; font-family: 'Segoe UI', Arial, sans-serif;">
+                <h3 style="color: #003366; text-align: center; font-weight: bold; margin-bottom: 25px;">
+                    El equipo de {datos.get("proceso", "Talento Humano")} ha logrado un avance en la actualización documental y gestión del conocimiento en su área
+                </h3>
 
-            # Asunto dinámico
-            asunto = f"Divulgación de Documentos - {fecha_actual} - {empresa_seleccionada}"
+                {docs_html}
+
+                <div style="margin-top: 30px; color: #003366;">
+                    <p style="font-weight: bold; font-size: 16px; display: flex; align-items: center;">
+                        <span style="font-size: 20px; margin-right: 10px;">📢</span> SOCIALIZACION Y APLICACION INMEDIATA
+                    </p>
+                    <ul style="color: #333; line-height: 1.5; font-size: 14px;">
+                        <li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
+                        <li style="color: #d9534f; font-weight: 500;">Conforme a lo establecido <strong>P-PRC-001 Procedimiento de Control Documental</strong>, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</li>
+                    </ul>
+                </div>
+
+                <div style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px dashed #003366;">
+                    <p style="color: #003366; font-weight: bold; margin-bottom: 5px;">¡HAZ PARTE DEL CAMBIO!</p>
+                    <p style="color: #003366; font-size: 13px;">#Transformacióndigitaldelosprocesos</p>
+                </div>
+
+                <div style="margin-top: 20px; font-size: 12px; color: #666; text-align: center;">
+                    <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
+                    <p>Si desea comunicarse con el área de procesos, escriba a:<br>
+                    {', '.join(cc_fijos)}</p>
+                </div>
+            </div>
+            """
+
+            asunto = f"Divulgación de Documentos - {datetime.now().strftime('%Y.%m.%d')} - {empresa_seleccionada}"
 
             with st.spinner("Enviando correo..."):
-                if enviar_correo(destinatarios_lista, cc_fijos, asunto, cuerpo):
+                if enviar_correo(destinatarios_lista, cc_fijos, asunto, cuerpo_html):
                     st.success("✅ Correo enviado correctamente.")
                 else:
                     st.error("❌ Falló el envío. Revisa la configuración SMTP.")
