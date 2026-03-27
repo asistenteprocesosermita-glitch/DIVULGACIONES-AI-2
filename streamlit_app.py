@@ -134,7 +134,7 @@ def analizar_documento(texto):
         raise ValueError("No se encontró JSON en la respuesta")
 
 # ------------------------------------------------------------------
-# ENVÍO DE CORREO CON HTML
+# ENVÍO DE CORREO CON HTML (nuevo diseño)
 # ------------------------------------------------------------------
 def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
     try:
@@ -254,90 +254,123 @@ if archivos:
                 "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
-            # Construir lista de nombres para el encabezado
-            lista_nombres = ", ".join([f"{doc['datos'].get('codigo', '')} {doc['datos'].get('documento', '')}".strip() for doc in st.session_state["documentos_info"]])
+            # -------- Construir listado de documentos para el encabezado --------
+            listado_docs = []
+            for doc in st.session_state["documentos_info"]:
+                datos = doc["datos"]
+                cod = datos.get("codigo", "")
+                nom = datos.get("documento", "")
+                if cod and nom:
+                    listado_docs.append(f"{cod} {nom}")
+                elif cod:
+                    listado_docs.append(cod)
+                elif nom:
+                    listado_docs.append(nom)
+            listado_docs_str = "<br>".join(listado_docs) if listado_docs else "Sin documentos"
 
-            # Proceso a mostrar en el párrafo de cabecera (tomamos el primero)
-            proceso_encabezado = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
+            # Proceso principal (tomar el primer documento o default)
+            proceso_principal = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
 
-            # Generar tarjetas por documento
+            # Fecha actual en formato DD.MM.AAAA
+            fecha_actual = datetime.now().strftime("%d.%m.%Y")
+
+            # Asunto dinámico
+            asunto = f"DIVULGACIÓN DE DOCUMENTOS - {proceso_principal} - {fecha_actual} - {empresa_seleccionada}"
+
+            # -------- Construir tarjetas por documento --------
             tarjetas_html = ""
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
+                # Limpieza de datos nulos
+                version = datos.get("version", "") or "---"
+                codigo = datos.get("codigo", "") or "---"
+                vigencia = datos.get("vigencia", "") or "---"
+                importancia = datos.get("importancia", "") or "---"
                 tipo_doc = get_tipo_documento(datos.get("codigo", ""))
                 nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
-                version = datos.get("version", "") or "N/A"
-                codigo = datos.get("codigo", "") or "N/A"
-                vigencia = datos.get("vigencia", "") or "N/A"
-                importancia = datos.get("importancia", "") or "N/A"
+                if not nombre_documento:
+                    nombre_documento = "Documento sin título"
 
                 tarjetas_html += f"""
-                <div style="border: 1px solid #cccccc; border-radius: 5px; margin-bottom: 20px; overflow: hidden;">
-                    <div style="background-color: #f4f4f4; padding: 10px 15px; border-bottom: 1px solid #cccccc;">
-                        <h3 style="margin: 0; font-size: 16px; color: #003366;">📄 {nombre_documento}</h3>
+                <div style="border: 1px solid #e1e8ed; border-radius: 6px; margin-bottom: 25px;">
+                    <div style="background-color: #f8f9fa; padding: 12px 15px; border-bottom: 1px solid #e1e8ed; display: flex; align-items: center;">
+                        <span style="font-size: 18px; margin-right: 10px;">📄</span>
+                        <strong style="color: #333; font-size: 14px;">{nombre_documento}</strong>
                     </div>
-                    <table width="100%" cellpadding="10" cellspacing="0" style="font-size: 14px;">
-                        <tr>
-                            <td width="30%" style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VERSIÓN</td>
-                            <td width="70%" style="border-bottom: 1px solid #dddddd;">{version}</td>
+                    <table width="100%" cellpadding="10" cellspacing="0" style="font-size: 13px; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid #f1f1f1;">
+                            <td width="30%" style="color: #666; font-weight: bold; background-color: #fafafa;">VERSIÓN</td>
+                            <td width="70%">{version}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #f1f1f1;">
+                            <td style="color: #666; font-weight: bold; background-color: #fafafa;">CÓDIGO</td>
+                            <td>{codigo}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #f1f1f1;">
+                            <td style="color: #666; font-weight: bold; background-color: #fafafa;">VIGENCIA</td>
+                            <td>{vigencia}</td>
                         </tr>
                         <tr>
-                            <td style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
-                            <td style="border-bottom: 1px solid #dddddd;">{codigo}</td>
-                        </tr>
-                        <tr>
-                            <td style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
-                            <td style="border-bottom: 1px solid #dddddd;">{vigencia}</td>
-                        </tr>
-                        <tr>
-                            <td style="background-color: #003366; color: white; font-weight: bold;">IMPORTANCIA</td>
-                            <td>{importancia}</td>
+                            <td style="color: #666; font-weight: bold; background-color: #fafafa;">IMPORTANCIA</td>
+                            <td style="line-height: 1.4;">{importancia}</td>
                         </tr>
                     </table>
                 </div>
                 """
 
-            # Plantilla HTML completa
+            # Plantilla HTML completa (basada en la última versión)
             cuerpo_html = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333333; line-height: 1.5;">
-                <div style="background-color: #003366; color: #ffffff; padding: 15px 20px; border-radius: 5px 5px 0 0;">
-                    <h2 style="margin: 0; font-size: 18px;">Divulgación de Documentos</h2>
-                    <p style="margin: 5px 0 0 0; font-size: 14px; color: #e0e0e0;">{lista_nombres}</p>
-                </div>
-                <div style="padding: 20px; border: 1px solid #dddddd; border-top: none; background-color: #ffffff;">
-                    <p style="background-color: #e6f0fa; padding: 10px; font-weight: bold; text-align: center; color: #003366; margin-top: 0;">
-                        El equipo de {proceso_encabezado} ha logrado un avance en la actualización documental y gestión del conocimiento en su área.
-                    </p>
-                    {tarjetas_html}
-                    <div style="background-color: #fff3f3; border-left: 4px solid #cc0000; padding: 15px; margin-bottom: 20px;">
-                        <h4 style="margin: 0 0 10px 0; color: #cc0000;">📢 SOCIALIZACIÓN Y APLICACIÓN INMEDIATA</h4>
-                        <ul style="margin: 0; padding-left: 20px; font-size: 13px;">
-                            <li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
-                            <li><strong style="color: #cc0000;">Conforme a lo establecido P-PRC-001 Procedimiento de Control Documental, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</strong></li>
-                        </ul>
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+                <meta charset="UTF-8">
+            </head>
+            <body style="margin: 0; padding: 0; background-color: #f4f7f9;">
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 700px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid #e1e8ed;">
+                    
+                    <div style="background-color: #003366; color: #ffffff; padding: 30px; border-bottom: 4px solid #0056b3;">
+                        <h1 style="margin: 0 0 12px 0; font-size: 22px; letter-spacing: 0.5px;">Divulgación de Documentos</h1>
+                        <div style="font-size: 13px; line-height: 1.5; color: #b3d1ff; font-weight: 400; border-top: 1px solid #1a4d80; padding-top: 12px;">
+                            <strong>Documentos asociados:</strong><br>
+                            {listado_docs_str}
+                        </div>
                     </div>
-                    <div style="background-color: #f8f9fa; border: 1px solid #d1d5db; border-radius: 5px; padding: 20px; text-align: center; margin-bottom: 20px;">
-                        <h3 style="margin: 0 0 10px 0; color: #003366;">Acceso a Plataforma IT SOLUTION</h3>
-                        <p style="font-size: 14px; margin-bottom: 15px; text-align: left;">
-                            Pueden acceder al documento oficial siguiendo esta ruta:<br>
-                            <strong>Ruta:</strong> Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.
+
+                    <div style="padding: 25px 30px 10px 30px;">
+                        <div style="background-color: #f0f7ff; border: 1px solid #cfe2ff; padding: 15px 20px; border-radius: 6px; text-align: center;">
+                            <p style="margin: 0; font-size: 15px; color: #004085; line-height: 1.4;">
+                                El equipo de <strong>{proceso_principal}</strong> ha logrado un avance en la actualización documental y gestión del conocimiento en su área.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style="padding: 10px 30px;">
+                        {tarjetas_html}
+                    </div>
+
+                    <div style="margin: 10px 30px 30px 30px; padding: 25px; background-color: #ffffff; border: 2px dashed #003366; border-radius: 8px; text-align: center;">
+                        <h3 style="margin: 0 0 15px 0; color: #003366; font-size: 17px;">📍 Acceso a Plataforma IT SOLUTION</h3>
+                        <p style="font-size: 13px; color: #555; margin-bottom: 20px; text-align: left;">
+                            <strong>Ruta de acceso:</strong><br>
+                            Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.
                         </p>
-                        <a href="http://190.131.206.250:8085/ItSolution/index.jsp" style="background-color: #003366; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
-                            Abrir IT SOLUTION
+                        <a href="http://172.16.20.166:8080/ItSolution/Formulario.jsp" 
+                           style="background-color: #28a745; color: #ffffff; padding: 14px 40px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; font-size: 15px; box-shadow: 0 2px 5px rgba(40,167,69,0.3);">
+                           INGRESAR A LA PLATAFORMA
                         </a>
                     </div>
-                    <div style="text-align: center; font-size: 12px; color: #777777; border-top: 1px dashed #cccccc; padding-top: 15px;">
-                        <p style="font-weight: bold; color: #003366; font-size: 14px; margin-bottom: 5px;">¡HAZ PARTE DEL CAMBIO!</p>
-                        <p style="margin-bottom: 15px;">#TransformaciónDigitalDeLosProcesos</p>
-                        <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
+
+                    <div style="background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 11px; color: #888;">
+                        <p style="margin: 0 0 5px 0; font-weight: bold; color: #003366; font-size: 13px;">¡HAZ PARTE DEL CAMBIO!</p>
+                        <p style="margin: 0 0 15px 0;">#TransformaciónDigitalDeLosProcesos</p>
+                        <p style="font-style: italic;">Este es un correo automático generado por IA. Por favor, no responda a este mensaje.</p>
                         <p>Si desea comunicarse con el área de procesos, escriba a:<br>
                         {', '.join(cc_fijos)}</p>
                     </div>
                 </div>
-            </div>
+            </body>
+            </html>
             """
-
-            asunto = f"Divulgación de Documentos - {datetime.now().strftime('%Y.%m.%d')} - {empresa_seleccionada}"
 
             with st.spinner("Enviando correo..."):
                 if enviar_correo(destinatarios_lista, cc_fijos, asunto, cuerpo_html):
