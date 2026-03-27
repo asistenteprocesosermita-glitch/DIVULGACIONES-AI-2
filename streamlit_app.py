@@ -184,7 +184,6 @@ if archivos and len(archivos) > 5:
     archivos = archivos[:5]
 
 if archivos:
-    # Guardamos los archivos en session_state para análisis bajo demanda
     st.session_state["archivos_subidos"] = archivos
     st.info("Documentos cargados. Haz clic en 'Procesar y enviar' para analizarlos con IA y enviar el correo.")
 
@@ -210,7 +209,6 @@ if archivos:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 continue
 
-            # Mostrar datos y permitir edición
             with st.expander(f"Documento {i+1}: {archivo.name} - Editar datos"):
                 col1, col2 = st.columns([3, 1])
                 with col1:
@@ -236,7 +234,6 @@ if archivos:
         status_text.text("¡Análisis completado!")
         st.session_state["documentos_info"] = documentos_info
 
-    # Si ya hay documentos analizados, mostrar opciones de envío
     if "documentos_info" in st.session_state and st.session_state["documentos_info"]:
         st.divider()
         destinatarios_input = st.text_input(
@@ -250,7 +247,6 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            # Correos fijos en CC
             cc_fijos = [
                 "coord-procesos@clinicalaermitadecartagena.com",
                 "profesionalprocesos2@clinicalaermitadecartagena.com",
@@ -258,78 +254,85 @@ if archivos:
                 "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
-            # Construir HTML para cada documento
-            docs_html = ""
+            # Construir lista de nombres para el encabezado
+            lista_nombres = ", ".join([f"{doc['datos'].get('codigo', '')} {doc['datos'].get('documento', '')}".strip() for doc in st.session_state["documentos_info"]])
+
+            # Proceso a mostrar en el párrafo de cabecera (tomamos el primero)
+            proceso_encabezado = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
+
+            # Generar tarjetas por documento
+            tarjetas_html = ""
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
-                tipo = doc["tipo"].lower()
-                accion = "creado" if tipo == "creación" else "actualizado"
-                fecha_vigencia = datos.get("vigencia", "fecha no especificada")
-                codigo = datos.get("codigo", "sin código")
-                nombre_doc = datos.get("documento", "sin título")
-                version = datos.get("version", "")
-                importancia = datos.get("importancia", "")
-                tipo_doc = get_tipo_documento(codigo)
+                tipo_doc = get_tipo_documento(datos.get("codigo", ""))
+                nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
+                version = datos.get("version", "") or "N/A"
+                codigo = datos.get("codigo", "") or "N/A"
+                vigencia = datos.get("vigencia", "") or "N/A"
+                importancia = datos.get("importancia", "") or "N/A"
 
-                # Bloque para cada documento (repite la tabla, o puedes generar una tabla única con varias filas)
-                docs_html += f"""
-                <div style="margin-bottom: 30px; border: 1px solid #ddd; border-radius: 8px; padding: 15px; background-color: white;">
-                    <p style="font-size: 14px; color: #003366; margin-bottom: 15px;">
-                        <strong>{tipo_doc} {codigo} {nombre_doc}</strong> – {accion} el {fecha_vigencia}
-                    </p>
-                    <table style="width: 100%; border-collapse: collapse; background-color: white;">
+                tarjetas_html += f"""
+                <div style="border: 1px solid #cccccc; border-radius: 5px; margin-bottom: 20px; overflow: hidden;">
+                    <div style="background-color: #f4f4f4; padding: 10px 15px; border-bottom: 1px solid #cccccc;">
+                        <h3 style="margin: 0; font-size: 16px; color: #003366;">📄 {nombre_documento}</h3>
+                    </div>
+                    <table width="100%" cellpadding="10" cellspacing="0" style="font-size: 14px;">
                         <tr>
-                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; width: 35%; border: 1px solid #003366;">VERSIÓN</th>
-                            <td style="padding: 8px; border: 1px solid #ccc;">{version}</td>
+                            <td width="30%" style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VERSIÓN</td>
+                            <td width="70%" style="border-bottom: 1px solid #dddddd;">{version}</td>
                         </tr>
                         <tr>
-                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">CÓDIGO</th>
-                            <td style="padding: 8px; border: 1px solid #ccc;">{codigo}</td>
+                            <td style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
+                            <td style="border-bottom: 1px solid #dddddd;">{codigo}</td>
                         </tr>
                         <tr>
-                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">DOCUMENTO</th>
-                            <td style="padding: 8px; border: 1px solid #ccc;">{nombre_doc}</td>
+                            <td style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
+                            <td style="border-bottom: 1px solid #dddddd;">{vigencia}</td>
                         </tr>
                         <tr>
-                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">VIGENCIA</th>
-                            <td style="padding: 8px; border: 1px solid #ccc;">{fecha_vigencia}</td>
-                        </tr>
-                        <tr>
-                            <th style="background-color: #003366; color: white; text-align: left; padding: 8px; border: 1px solid #003366;">IMPORTANCIA</th>
-                            <td style="padding: 8px; border: 1px solid #ccc;">{importancia}</td>
+                            <td style="background-color: #003366; color: white; font-weight: bold;">IMPORTANCIA</td>
+                            <td>{importancia}</td>
                         </tr>
                     </table>
                 </div>
                 """
 
-            # Plantilla HTML completa del correo
+            # Plantilla HTML completa
             cuerpo_html = f"""
-            <div style="max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 25px; background-color: #e8f1f8; font-family: 'Segoe UI', Arial, sans-serif;">
-                <h3 style="color: #003366; text-align: center; font-weight: bold; margin-bottom: 25px;">
-                    El equipo de {datos.get("proceso", "Talento Humano")} ha logrado un avance en la actualización documental y gestión del conocimiento en su área
-                </h3>
-
-                {docs_html}
-
-                <div style="margin-top: 30px; color: #003366;">
-                    <p style="font-weight: bold; font-size: 16px; display: flex; align-items: center;">
-                        <span style="font-size: 20px; margin-right: 10px;">📢</span> SOCIALIZACION Y APLICACION INMEDIATA
+            <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333333; line-height: 1.5;">
+                <div style="background-color: #003366; color: #ffffff; padding: 15px 20px; border-radius: 5px 5px 0 0;">
+                    <h2 style="margin: 0; font-size: 18px;">Divulgación de Documentos</h2>
+                    <p style="margin: 5px 0 0 0; font-size: 14px; color: #e0e0e0;">{lista_nombres}</p>
+                </div>
+                <div style="padding: 20px; border: 1px solid #dddddd; border-top: none; background-color: #ffffff;">
+                    <p style="background-color: #e6f0fa; padding: 10px; font-weight: bold; text-align: center; color: #003366; margin-top: 0;">
+                        El equipo de {proceso_encabezado} ha logrado un avance en la actualización documental y gestión del conocimiento en su área.
                     </p>
-                    <ul style="color: #333; line-height: 1.5; font-size: 14px;">
-                        <li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
-                        <li style="color: #d9534f; font-weight: 500;">Conforme a lo establecido <strong>P-PRC-001 Procedimiento de Control Documental</strong>, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</li>
-                    </ul>
-                </div>
-
-                <div style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px dashed #003366;">
-                    <p style="color: #003366; font-weight: bold; margin-bottom: 5px;">¡HAZ PARTE DEL CAMBIO!</p>
-                    <p style="color: #003366; font-size: 13px;">#Transformacióndigitaldelosprocesos</p>
-                </div>
-
-                <div style="margin-top: 20px; font-size: 12px; color: #666; text-align: center;">
-                    <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
-                    <p>Si desea comunicarse con el área de procesos, escriba a:<br>
-                    {', '.join(cc_fijos)}</p>
+                    {tarjetas_html}
+                    <div style="background-color: #fff3f3; border-left: 4px solid #cc0000; padding: 15px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; color: #cc0000;">📢 SOCIALIZACIÓN Y APLICACIÓN INMEDIATA</h4>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 13px;">
+                            <li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
+                            <li><strong style="color: #cc0000;">Conforme a lo establecido P-PRC-001 Procedimiento de Control Documental, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</strong></li>
+                        </ul>
+                    </div>
+                    <div style="background-color: #f8f9fa; border: 1px solid #d1d5db; border-radius: 5px; padding: 20px; text-align: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 10px 0; color: #003366;">Acceso a Plataforma IT SOLUTION</h3>
+                        <p style="font-size: 14px; margin-bottom: 15px; text-align: left;">
+                            Pueden acceder al documento oficial siguiendo esta ruta:<br>
+                            <strong>Ruta:</strong> Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.
+                        </p>
+                        <a href="http://190.131.206.250:8085/ItSolution/index.jsp" style="background-color: #003366; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
+                            Abrir IT SOLUTION
+                        </a>
+                    </div>
+                    <div style="text-align: center; font-size: 12px; color: #777777; border-top: 1px dashed #cccccc; padding-top: 15px;">
+                        <p style="font-weight: bold; color: #003366; font-size: 14px; margin-bottom: 5px;">¡HAZ PARTE DEL CAMBIO!</p>
+                        <p style="margin-bottom: 15px;">#TransformaciónDigitalDeLosProcesos</p>
+                        <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
+                        <p>Si desea comunicarse con el área de procesos, escriba a:<br>
+                        {', '.join(cc_fijos)}</p>
+                    </div>
                 </div>
             </div>
             """
