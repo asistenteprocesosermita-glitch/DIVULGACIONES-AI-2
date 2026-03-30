@@ -10,7 +10,7 @@ from email.mime.text import MIMEText
 from datetime import datetime
 
 # ------------------------------------------------------------------
-# CONFIGURACIÓN DE CLAVES (desde secrets de Streamlit)
+# CONFIGURACIÓN DE CLAVES 
 # ------------------------------------------------------------------
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -34,7 +34,7 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ------------------------------------------------------------------
-# LISTA DE PROCESOS (completa)
+# LISTA DE PROCESOS 
 # ------------------------------------------------------------------
 PROCESOS = [
     "ADHERENCIA AL TRATAMIENTO", "ADMISIONES", "ALMACÉN", "AMBIENTE FÍSICO",
@@ -134,7 +134,7 @@ def analizar_documento(texto):
         raise ValueError("No se encontró JSON en la respuesta")
 
 # ------------------------------------------------------------------
-# ENVÍO DE CORREO CON HTML (optimizado para Outlook)
+# ENVÍO DE CORREO 
 # ------------------------------------------------------------------
 def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
     try:
@@ -248,11 +248,7 @@ if archivos:
                 st.stop()
 
             cc_fijos = [
-                "coord-procesos@clinicalaermitadecartagena.com",
-                "profesionalprocesos2@clinicalaermitadecartagena.com",
-                "asistente-procesos@clinicalaermitadecartagena.com",
-                "aprendiz-procesos2@clinicalaermitadecartagena.com"
-            ]
+                
 
             # Construir lista de nombres para el encabezado
             lista_nombres = ", ".join([f"{doc['datos'].get('codigo', '')} {doc['datos'].get('documento', '')}".strip() for doc in st.session_state["documentos_info"]])
