@@ -197,7 +197,7 @@ if archivos and len(archivos) > 5:
 # Procesamiento
 if archivos:
     st.session_state["archivos_subidos"] = archivos
-    st.info("✅ Haz clic en ‘Procesar’ para analizarlos con IA y preparar los datos para el envío del correo")
+    st.info("✅ Documentos cargados. Haz clic en ‘Procesar’ para analizarlos con IA y preparar los datos para el envío del correo.”)
 
     if st.button("🚀 Procesar", use_container_width=True):
         documentos_info = []
