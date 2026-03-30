@@ -204,7 +204,7 @@ if archivos:
     st.session_state["archivos_subidos"] = archivos
     st.info("✅ Documentos cargados. Haz clic en 'Procesar y enviar' para analizarlos con IA y enviar el correo.")
 
-    if st.button("🚀 Procesar y enviar correo", use_container_width=True):
+    if st.button("🚀 Procesar", use_container_width=True):
         documentos_info = []
         progress_bar = st.progress(0)
         status_text = st.empty()
