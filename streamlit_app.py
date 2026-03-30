@@ -197,7 +197,7 @@ if archivos and len(archivos) > 5:
 # Procesamiento
 if archivos:
     st.session_state["archivos_subidos"] = archivos
-    st.info("✅ Documentos cargados. Haz clic en 'Procesar y enviar' para analizarlos con IA y enviar el correo.")
+    st.info("✅ Haz clic en ‘Procesar’ para analizarlos con IA y preparar los datos para el envío del correo")
 
     if st.button("🚀 Procesar", use_container_width=True):
         documentos_info = []
@@ -254,7 +254,7 @@ if archivos:
         st.divider()
         destinatarios_input = st.text_input(
             "Correos destinatarios (Para, separados por coma)",
-            value="asistenteprocesosermita@gmail.com"
+            value=""
         )
 
         if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
