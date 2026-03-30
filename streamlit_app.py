@@ -269,10 +269,6 @@ if archivos:
                 st.stop()
 
             cc_fijos = [
-                "coord-procesos@clinicalaermitadecartagena.com",
-                "profesionalprocesos2@clinicalaermitadecartagena.com",
-                "asistente-procesos@clinicalaermitadecartagena.com",
-                "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
             # Construir lista de nombres para el encabezado
