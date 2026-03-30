@@ -254,7 +254,7 @@ if archivos:
         st.divider()
         destinatarios_input = st.text_input(
             "Correos destinatarios (Para, separados por coma)",
-            value="asistenteprocesosermita@gmail.com"
+            value=""
         )
 
         if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
@@ -265,7 +265,8 @@ if archivos:
 
             # Correos fijos en CC (restaurados)
             cc_fijos = [
-             ]
+  
+            ]
 
             # Construir lista de nombres para el encabezado
             lista_nombres = []
