@@ -247,7 +247,7 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            cc_fijos = [
+            cc_fijos = [  ]
                 
 
             # Construir lista de nombres para el encabezado
