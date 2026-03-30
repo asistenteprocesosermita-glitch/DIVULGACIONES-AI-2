@@ -34,7 +34,7 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ------------------------------------------------------------------
-# LISTA DE PROCESOS 
+# LISTA DE PROCESOS (completa)
 # ------------------------------------------------------------------
 PROCESOS = [
     "ADHERENCIA AL TRATAMIENTO", "ADMISIONES", "ALMACÉN", "AMBIENTE FÍSICO",
@@ -90,7 +90,7 @@ def get_tipo_documento(codigo):
     return "documento"
 
 # ------------------------------------------------------------------
-# EXTRACCIÓN DE TEXTO
+# EXTRACCIÓN DE TEXTO (solo PDF)
 # ------------------------------------------------------------------
 def extraer_texto_pdf(archivo):
     texto = ""
@@ -99,28 +99,27 @@ def extraer_texto_pdf(archivo):
         texto += pagina.extract_text() or ""
     return texto
 
-def extraer_texto_docx(archivo):
-    doc = docx.Document(archivo)
-    return "\n".join([p.text for p in doc.paragraphs])
-
 # ------------------------------------------------------------------
-# ANÁLISIS CON GEMINI
+# ANÁLISIS CON GEMINI (incluye campos extra para manuales)
 # ------------------------------------------------------------------
-def analizar_documento(texto):
+def analizar_documento(texto, filename):
+    # Prompt mejorado para extraer información adicional en manuales de funciones
     prompt = f"""
     Eres un asistente que extrae información de documentos internos de una clínica.
-    Devuelve ÚNICAMENTE un objeto JSON válido con las claves:
-    - "proceso" (debe coincidir exactamente con la lista)
-    - "codigo"
-    - "version"
-    - "documento"
-    - "vigencia" (en formato YYYY.MM.DD, ejemplo: 2024.10.21)
-    - "importancia" (máx 15 palabras)
+    Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
+    - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
+    - "codigo": el código del documento (ej. M-SST-003, R-TH-003, etc.)
+    - "version": la versión del documento (formato XX, ej. 01, 02). Si es un manual de funciones, extrae el valor después de "Consecutivo:".
+    - "documento": el nombre completo del documento.
+    - "vigencia": la fecha desde que aplica (formato YYYY.MM.DD). Si es manual de funciones, extrae la fecha más reciente del control de versiones.
+    - "importancia": un resumen de máximo 15 palabras.
+    - "cargo": si el documento es un manual de funciones (código comienza con R-TH-), extrae el nombre del cargo al que pertenece. Si no, puedes omitirlo.
+    - "consecutivo": si el documento es manual de funciones, extrae el número de consecutivo (ej. 01, 02) tal como aparece junto a "Consecutivo:".
 
     Lista de procesos:
     {', '.join(PROCESOS)}
 
-    Texto:
+    Texto del documento:
     {texto}
     """
     model = genai.GenerativeModel('gemini-2.5-flash')
@@ -129,12 +128,22 @@ def analizar_documento(texto):
     inicio = texto_respuesta.find('{')
     fin = texto_respuesta.rfind('}') + 1
     if inicio != -1 and fin != 0:
-        return json.loads(texto_respuesta[inicio:fin])
+        datos = json.loads(texto_respuesta[inicio:fin])
+        # Ajuste para manuales: si es manual y no se extrajo cargo, usar el nombre del archivo
+        if datos.get("codigo", "").upper().startswith("R-TH-"):
+            if not datos.get("cargo"):
+                # Tomar nombre del archivo sin extensión como cargo
+                base = os.path.splitext(os.path.basename(filename))[0]
+                datos["cargo"] = base
+            # Ajustar versión para mostrar "Consecutivo: XX"
+            if datos.get("consecutivo"):
+                datos["version"] = f"Consecutivo: {datos['consecutivo']}"
+        return datos
     else:
         raise ValueError("No se encontró JSON en la respuesta")
 
 # ------------------------------------------------------------------
-# ENVÍO DE CORREO 
+# ENVÍO DE CORREO CON HTML (colores dinámicos según empresa)
 # ------------------------------------------------------------------
 def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
     try:
@@ -157,25 +166,32 @@ def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
         return False
 
 # ------------------------------------------------------------------
-# INTERFAZ STREAMLIT
+# INTERFAZ STREAMLIT (renovada)
 # ------------------------------------------------------------------
-st.set_page_config(page_title="Divulgaciones AI - Múltiples Documentos", layout="centered")
-st.title("📢 Divulgaciones Automáticas (Múltiples Documentos)")
-st.markdown("Carga hasta 5 documentos (PDF/Word). Para cada uno, la IA extraerá los datos y podrás definir si es **Creación** o **Actualización**. Luego se enviará un único correo con el resumen de todos.")
+st.set_page_config(page_title="Divulgaciones AI", layout="centered", page_icon="📢")
 
-# Selección de empresa
+# Título en mayúsculas y descripción mejorada
+st.markdown("""
+    <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-size: 2.5rem; font-weight: bold; color: #003366;">📢 DIVULGACIONES AUTOMÁTICAS</h1>
+        <p style="font-size: 1rem; color: #555;">Carga hasta 5 documentos en PDF. Para cada uno, la IA extraerá los datos y podrás definir la empresa y si es Creación o Actualización. Luego se enviará un único correo con el resumen de todos.</p>
+    </div>
+""", unsafe_allow_html=True)
+
+# Selección de empresa (con colores asociados)
 empresa_opciones = {
-    "Clínica La Ermita": "CLÍNICA LA ERMITA",
-    "Red Integrada de Ambulancia": "RED INTEGRADA DE AMBULANCIA",
-    "Coonegan": "COONEGAN"
+    "Clínica La Ermita": {"nombre": "CLÍNICA LA ERMITA", "color": "#0e9ada"},
+    "Red Integrada de Ambulancia": {"nombre": "RED INTEGRADA DE AMBULANCIA", "color": "#3466af"},
+    "Coonegan": {"nombre": "COONEGAN", "color": "#30b377"}
 }
 empresa_seleccionada = st.selectbox("Empresa destinataria de la divulgación", list(empresa_opciones.keys()))
-empresa_nombre = empresa_opciones[empresa_seleccionada]
+empresa_nombre = empresa_opciones[empresa_seleccionada]["nombre"]
+empresa_color = empresa_opciones[empresa_seleccionada]["color"]
 
-# Carga de archivos
+# Carga de archivos (solo PDF)
 archivos = st.file_uploader(
-    "Selecciona los documentos (máx 5)",
-    type=["pdf", "docx"],
+    "Selecciona los documentos (máx 5, solo PDF)",
+    type=["pdf"],
     accept_multiple_files=True
 )
 
@@ -183,38 +199,43 @@ if archivos and len(archivos) > 5:
     st.warning("Máximo 5 documentos. Solo se procesarán los primeros 5.")
     archivos = archivos[:5]
 
+# Procesamiento
 if archivos:
     st.session_state["archivos_subidos"] = archivos
-    st.info("Documentos cargados. Haz clic en 'Procesar y enviar' para analizarlos con IA y enviar el correo.")
+    st.info("✅ Documentos cargados. Haz clic en 'Procesar y enviar' para analizarlos con IA y enviar el correo.")
 
-    if st.button("🚀 Procesar y enviar correo"):
+    if st.button("🚀 Procesar y enviar correo", use_container_width=True):
         documentos_info = []
         progress_bar = st.progress(0)
         status_text = st.empty()
 
         for i, archivo in enumerate(archivos):
             status_text.text(f"Procesando {archivo.name}...")
-            if archivo.type == "application/pdf":
-                texto = extraer_texto_pdf(archivo)
-            else:
-                texto = extraer_texto_docx(archivo)
+            texto = extraer_texto_pdf(archivo)
 
             if not texto.strip():
                 st.error(f"No se pudo extraer texto de {archivo.name}. Se omite.")
                 continue
 
             try:
-                datos = analizar_documento(texto)
+                datos = analizar_documento(texto, archivo.name)
             except Exception as e:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 continue
 
-            with st.expander(f"Documento {i+1}: {archivo.name} - Editar datos"):
+            # Edición de datos
+            with st.expander(f"📄 Documento {i+1}: {archivo.name} - Editar datos", expanded=True):
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     st.json(datos)
                 with col2:
-                    tipo = st.radio("Tipo", ["Creación", "Actualización"], key=f"tipo_{i}", horizontal=True)
+                    tipo = st.radio(
+                        "Tipo de operación",
+                        ["Creación", "Actualización"],
+                        key=f"tipo_{i}",
+                        horizontal=True,
+                        index=1  # Por defecto "Actualización"
+                    )
 
                 # Permitir edición manual
                 datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=PROCESOS.index(datos.get("proceso", PROCESOS[0])), key=f"proceso_{i}")
@@ -241,17 +262,30 @@ if archivos:
             value="asistenteprocesosermita@gmail.com"
         )
 
-        if st.button("📨 Enviar correo con todos los documentos"):
+        if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
             destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
             if not destinatarios_lista:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            cc_fijos = [  ]
-                
+            cc_fijos = [
+                "coord-procesos@clinicalaermitadecartagena.com",
+                "profesionalprocesos2@clinicalaermitadecartagena.com",
+                "asistente-procesos@clinicalaermitadecartagena.com",
+                "aprendiz-procesos2@clinicalaermitadecartagena.com"
+            ]
 
             # Construir lista de nombres para el encabezado
-            lista_nombres = ", ".join([f"{doc['datos'].get('codigo', '')} {doc['datos'].get('documento', '')}".strip() for doc in st.session_state["documentos_info"]])
+            lista_nombres = []
+            for doc in st.session_state["documentos_info"]:
+                datos = doc["datos"]
+                if datos.get("codigo", "").upper().startswith("R-TH-"):
+                    # Manual: usar el cargo o el nombre del archivo
+                    nombre = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
+                else:
+                    nombre = f"{datos.get('codigo', '')} {datos.get('documento', '')}".strip()
+                lista_nombres.append(nombre)
+            lista_nombres_str = "<br>".join(lista_nombres) if lista_nombres else "Sin documentos"
 
             # Proceso a mostrar en el párrafo de cabecera (tomamos el primero)
             proceso_encabezado = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
@@ -261,7 +295,11 @@ if archivos:
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
                 tipo_doc = get_tipo_documento(datos.get("codigo", ""))
-                nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
+                # Nombre del documento según reglas
+                if datos.get("codigo", "").upper().startswith("R-TH-"):
+                    nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
+                else:
+                    nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
                 version = datos.get("version", "") or "N/A"
                 codigo = datos.get("codigo", "") or "N/A"
                 vigencia = datos.get("vigencia", "") or "N/A"
@@ -299,7 +337,7 @@ if archivos:
                 </table>
                 """
 
-            # Plantilla HTML completa con tablas, compatible con Outlook
+            # Plantilla HTML completa con colores dinámicos según la empresa
             cuerpo_html = f"""
             <!DOCTYPE html>
             <html>
@@ -311,13 +349,13 @@ if archivos:
                     <tr>
                         <td align="center">
                             <table width="700" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-collapse: collapse;">
-                                <!-- Header -->
+                                <!-- Header con color de la empresa -->
                                 <tr>
-                                    <td style="background-color: #003366; color: #ffffff; padding: 20px 30px;">
+                                    <td style="background-color: {empresa_color}; color: #ffffff; padding: 20px 30px;">
                                         <h1 style="margin: 0 0 10px; font-size: 22px;">Divulgación de Documentos</h1>
-                                        <div style="font-size: 13px; color: #b3d1ff; margin-top: 10px; border-top: 1px solid #1a4d80; padding-top: 12px;">
+                                        <div style="font-size: 13px; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 12px;">
                                             <strong>Documentos asociados:</strong><br>
-                                            {lista_nombres}
+                                            {lista_nombres_str}
                                         </div>
                                     </td>
                                 </tr>
@@ -366,7 +404,7 @@ if archivos:
                                                         Pueden acceder al documento oficial siguiendo esta ruta:<br>
                                                         <strong>Ruta:</strong> Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.
                                                     </p>
-                                                    <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color: #003366; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block;">Abrir IT SOLUTION</a>
+                                                    <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color: {empresa_color}; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block;">Abrir IT SOLUTION</a>
                                                 </td>
                                             </tr>
                                         </table>
