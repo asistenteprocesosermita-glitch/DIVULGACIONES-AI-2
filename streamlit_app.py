@@ -173,11 +173,11 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Selección de empresa (con colores asociados)
+# Selección de empresa (con colores asociados - ahora en tonos pastel)
 empresa_opciones = {
-    "Clínica La Ermita": {"nombre": "CLÍNICA LA ERMITA", "color": "#0e9ada"},
-    "Red Integrada de Ambulancia": {"nombre": "RED INTEGRADA DE AMBULANCIA", "color": "#3466af"},
-    "Coonegan": {"nombre": "COONEGAN", "color": "#30b377"}
+    "Clínica La Ermita": {"nombre": "CLÍNICA LA ERMITA", "color": "#6ab0de"},      # azul pastel
+    "Red Integrada de Ambulancia": {"nombre": "RED INTEGRADA DE AMBULANCIA", "color": "#5a7d9a"}, # azul más suave
+    "Coonegan": {"nombre": "COONEGAN", "color": "#6fbf8a"}                          # verde pastel
 }
 empresa_seleccionada = st.selectbox("Empresa destinataria de la divulgación", list(empresa_opciones.keys()))
 empresa_nombre = empresa_opciones[empresa_seleccionada]["nombre"]
@@ -263,16 +263,15 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            # Correos fijos en CC 
+            # Correos fijos en CC (restaurados)
             cc_fijos = [
-            ]
+             ]
 
             # Construir lista de nombres para el encabezado
             lista_nombres = []
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
                 if datos.get("codigo", "").upper().startswith("R-TH-"):
-                    # Manual: usar el cargo o el nombre del archivo
                     nombre = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                 else:
                     nombre = f"{datos.get('codigo', '')} {datos.get('documento', '')}".strip()
@@ -287,12 +286,16 @@ if archivos:
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
                 tipo_doc = get_tipo_documento(datos.get("codigo", ""))
+
+                # Para manuales de funciones: el código se mostrará como "No aplica"
                 if datos.get("codigo", "").upper().startswith("R-TH-"):
+                    codigo_mostrar = "No aplica"
                     nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                 else:
+                    codigo_mostrar = datos.get("codigo", "") or "N/A"
                     nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
+
                 version = datos.get("version", "") or "N/A"
-                codigo = datos.get("codigo", "") or "N/A"
                 vigencia = datos.get("vigencia", "") or "N/A"
                 importancia = datos.get("importancia", "") or "N/A"
 
@@ -312,7 +315,7 @@ if archivos:
                                 </tr>
                                 <tr>
                                     <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
-                                    <td style="border-bottom: 1px solid #dddddd;">{codigo}</td>
+                                    <td style="border-bottom: 1px solid #dddddd;">{codigo_mostrar}</td>
                                 </tr>
                                 <tr>
                                     <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
