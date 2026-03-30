@@ -173,11 +173,11 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Selección de empresa (con colores asociados - ahora en tonos pastel)
+# Selección de empresa (con colores pastel)
 empresa_opciones = {
     "Clínica La Ermita": {"nombre": "CLÍNICA LA ERMITA", "color": "#6ab0de"},      # azul pastel
-    "Red Integrada de Ambulancia": {"nombre": "RED INTEGRADA DE AMBULANCIA", "color": "#5a7d9a"}, # azul más suave
-    "Coonegan": {"nombre": "COONEGAN", "color": "#6fbf8a"}                          # verde pastel
+    "Red Integrada de Ambulancia": {"nombre": "RED INTEGRADA DE AMBULANCIA", "color": "#5a7d9a"},  # azul grisáceo pastel
+    "Coonegan": {"nombre": "COONEGAN", "color": "#5fad7a"}                        # verde pastel
 }
 empresa_seleccionada = st.selectbox("Empresa destinataria de la divulgación", list(empresa_opciones.keys()))
 empresa_nombre = empresa_opciones[empresa_seleccionada]["nombre"]
@@ -254,7 +254,7 @@ if archivos:
         st.divider()
         destinatarios_input = st.text_input(
             "Correos destinatarios (Para, separados por coma)",
-            value=""
+            value="asistenteprocesosermita@gmail.com"
         )
 
         if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
@@ -263,21 +263,25 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            # Correos fijos en CC (restaurados)
+            # Correos fijos en CC (reestablecidos)
             cc_fijos = [
-  
+                "coord-procesos@clinicalaermitadecartagena.com",
+                "profesionalprocesos2@clinicalaermitadecartagena.com",
+                "asistente-procesos@clinicalaermitadecartagena.com",
+                "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
-            # Construir lista de nombres para el encabezado
-            lista_nombres = []
+            # Construir lista de nombres para el encabezado (como viñetas)
+            lista_items = []
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
                 if datos.get("codigo", "").upper().startswith("R-TH-"):
                     nombre = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                 else:
                     nombre = f"{datos.get('codigo', '')} {datos.get('documento', '')}".strip()
-                lista_nombres.append(nombre)
-            lista_nombres_str = "<br>".join(lista_nombres) if lista_nombres else "Sin documentos"
+                if nombre:
+                    lista_items.append(f"<li>{nombre}</li>")
+            lista_nombres_str = "<ul style='margin: 0; padding-left: 20px;'>" + "".join(lista_items) + "</ul>" if lista_items else "Sin documentos"
 
             # Proceso a mostrar en el párrafo de cabecera (tomamos el primero)
             proceso_encabezado = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
@@ -288,13 +292,14 @@ if archivos:
                 datos = doc["datos"]
                 tipo_doc = get_tipo_documento(datos.get("codigo", ""))
 
-                # Para manuales de funciones: el código se mostrará como "No aplica"
+                # Determinar nombre del documento (sin código para manuales)
                 if datos.get("codigo", "").upper().startswith("R-TH-"):
-                    codigo_mostrar = "No aplica"
                     nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
+                    # Para manuales, el código en la tabla será "No Aplica"
+                    codigo_tabla = "No Aplica"
                 else:
-                    codigo_mostrar = datos.get("codigo", "") or "N/A"
                     nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
+                    codigo_tabla = datos.get("codigo", "") or "N/A"
 
                 version = datos.get("version", "") or "N/A"
                 vigencia = datos.get("vigencia", "") or "N/A"
@@ -316,7 +321,7 @@ if archivos:
                                 </tr>
                                 <tr>
                                     <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
-                                    <td style="border-bottom: 1px solid #dddddd;">{codigo_mostrar}</td>
+                                    <td style="border-bottom: 1px solid #dddddd;">{codigo_tabla}</td>
                                 </tr>
                                 <tr>
                                     <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
