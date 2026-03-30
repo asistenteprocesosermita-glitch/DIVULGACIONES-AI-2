@@ -263,12 +263,8 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            # Correos fijos en CC (recuperados de versiones anteriores)
+            # Correos fijos en CC 
             cc_fijos = [
-                "coord-procesos@clinicalaermitadecartagena.com",
-                "profesionalprocesos2@clinicalaermitadecartagena.com",
-                "asistente-procesos@clinicalaermitadecartagena.com",
-                "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
             # Construir lista de nombres para el encabezado
