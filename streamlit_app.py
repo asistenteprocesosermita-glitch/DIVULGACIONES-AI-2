@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import PyPDF2
-import docx
 import google.generativeai as genai
 import smtplib
 import json
@@ -103,7 +102,6 @@ def extraer_texto_pdf(archivo):
 # ANÁLISIS CON GEMINI (incluye campos extra para manuales)
 # ------------------------------------------------------------------
 def analizar_documento(texto, filename):
-    # Prompt mejorado para extraer información adicional en manuales de funciones
     prompt = f"""
     Eres un asistente que extrae información de documentos internos de una clínica.
     Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
@@ -132,10 +130,8 @@ def analizar_documento(texto, filename):
         # Ajuste para manuales: si es manual y no se extrajo cargo, usar el nombre del archivo
         if datos.get("codigo", "").upper().startswith("R-TH-"):
             if not datos.get("cargo"):
-                # Tomar nombre del archivo sin extensión como cargo
                 base = os.path.splitext(os.path.basename(filename))[0]
                 datos["cargo"] = base
-            # Ajustar versión para mostrar "Consecutivo: XX"
             if datos.get("consecutivo"):
                 datos["version"] = f"Consecutivo: {datos['consecutivo']}"
         return datos
@@ -154,7 +150,6 @@ def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
         msg["Subject"] = asunto
         msg.attach(MIMEText(cuerpo_html, "html"))
 
-        todos = destinatarios + cc_list
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
         server.login(SMTP_USER, SMTP_PASSWORD)
@@ -166,7 +161,7 @@ def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
         return False
 
 # ------------------------------------------------------------------
-# INTERFAZ STREAMLIT (renovada)
+# INTERFAZ STREAMLIT
 # ------------------------------------------------------------------
 st.set_page_config(page_title="Divulgaciones AI", layout="centered", page_icon="📢")
 
@@ -268,7 +263,12 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
+            # Correos fijos en CC (recuperados de versiones anteriores)
             cc_fijos = [
+                "coord-procesos@clinicalaermitadecartagena.com",
+                "profesionalprocesos2@clinicalaermitadecartagena.com",
+                "asistente-procesos@clinicalaermitadecartagena.com",
+                "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
             # Construir lista de nombres para el encabezado
@@ -286,12 +286,11 @@ if archivos:
             # Proceso a mostrar en el párrafo de cabecera (tomamos el primero)
             proceso_encabezado = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
 
-            # Generar tarjetas por documento (usando tablas)
+            # Generar tarjetas por documento usando el color corporativo en los encabezados de tabla
             tarjetas_html = ""
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
                 tipo_doc = get_tipo_documento(datos.get("codigo", ""))
-                # Nombre del documento según reglas
                 if datos.get("codigo", "").upper().startswith("R-TH-"):
                     nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                 else:
@@ -312,19 +311,19 @@ if archivos:
                         <td style="border: 1px solid #cccccc; padding: 0;">
                             <table width="100%" cellpadding="8" cellspacing="0" border="0" style="border-collapse: collapse;">
                                 <tr>
-                                    <td width="30%" style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VERSIÓN</td>
+                                    <td width="30%" style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VERSIÓN</td>
                                     <td width="70%" style="border-bottom: 1px solid #dddddd;">{version}</td>
                                 </tr>
                                 <tr>
-                                    <td style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
+                                    <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
                                     <td style="border-bottom: 1px solid #dddddd;">{codigo}</td>
                                 </tr>
                                 <tr>
-                                    <td style="background-color: #003366; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
+                                    <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
                                     <td style="border-bottom: 1px solid #dddddd;">{vigencia}</td>
                                 </tr>
                                 <tr>
-                                    <td style="background-color: #003366; color: white; font-weight: bold;">IMPORTANCIA</td>
+                                    <td style="background-color: {empresa_color}; color: white; font-weight: bold;">IMPORTANCIA</td>
                                     <td>{importancia}</td>
                                 </tr>
                             </table>
@@ -333,7 +332,7 @@ if archivos:
                 </table>
                 """
 
-            # Plantilla HTML completa con colores dinámicos según la empresa
+            # Plantilla HTML completa con colores dinámicos
             cuerpo_html = f"""
             <!DOCTYPE html>
             <html>
@@ -355,10 +354,10 @@ if archivos:
                                         </div>
                                     </td>
                                 </tr>
-                                <!-- Mensaje de avance -->
+                                <!-- Mensaje de avance con borde del color corporativo -->
                                 <tr>
                                     <td style="padding: 20px 30px;">
-                                        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f7ff; border: 1px solid #cfe2ff;">
+                                        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f7ff; border: 1px solid {empresa_color};">
                                             <tr>
                                                 <td style="padding: 15px 20px; text-align: center; color: #004085;">
                                                     El equipo de <strong>{proceso_encabezado}</strong> ha logrado un avance en la actualización documental y gestión del conocimiento en su área.
