@@ -175,13 +175,22 @@ st.markdown("""
 
 # Selección de empresa (con colores pastel)
 empresa_opciones = {
-    "Clínica La Ermita": {"nombre": "CLÍNICA LA ERMITA", "color": "#6ab0de"},      # azul pastel
-    "Red Integrada de Ambulancia": {"nombre": "RED INTEGRADA DE AMBULANCIA", "color": "#5a7d9a"},  # azul grisáceo pastel
-    "Coonegan": {"nombre": "COONEGAN", "color": "#5fad7a"}                        # verde pastel
+    "Clínica La Ermita": {"nombre": "CLÍNICA LA ERMITA", "color": "#6ab0de"},
+    "Red Integrada de Ambulancia": {"nombre": "RED INTEGRADA DE AMBULANCIA", "color": "#5a7d9a"},
+    "Coonegan": {"nombre": "COONEGAN", "color": "#5fad7a"}
 }
 empresa_seleccionada = st.selectbox("Empresa destinataria de la divulgación", list(empresa_opciones.keys()))
 empresa_nombre = empresa_opciones[empresa_seleccionada]["nombre"]
 empresa_color = empresa_opciones[empresa_seleccionada]["color"]
+
+# ----------------- NUEVO: Selector global de tipo de operación -----------------
+tipo_operacion_global = st.radio(
+    "Tipo de operación para todos los documentos",
+    ["Creación", "Actualización"],
+    index=1,  # Por defecto "Actualización"
+    horizontal=True
+)
+# -----------------------------------------------------------------------------
 
 # Carga de archivos (solo PDF)
 archivos = st.file_uploader(
@@ -218,20 +227,10 @@ if archivos:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 continue
 
-            # Edición de datos
+            # Edición de datos (ya no incluimos el selector de tipo aquí)
             with st.expander(f"📄 Documento {i+1}: {archivo.name} - Editar datos", expanded=True):
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.json(datos)
-                with col2:
-                    tipo = st.radio(
-                        "Tipo de operación",
-                        ["Creación", "Actualización"],
-                        key=f"tipo_{i}",
-                        horizontal=True,
-                        index=1  # Por defecto "Actualización"
-                    )
-
+                # Mostrar JSON extraído
+                st.json(datos)
                 # Permitir edición manual
                 datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=PROCESOS.index(datos.get("proceso", PROCESOS[0])), key=f"proceso_{i}")
                 datos["codigo"] = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{i}")
@@ -240,10 +239,11 @@ if archivos:
                 datos["vigencia"] = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{i}")
                 datos["importancia"] = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{i}", height=80)
 
+            # Usamos el tipo global para todos los documentos
             documentos_info.append({
                 "nombre": archivo.name,
                 "datos": datos,
-                "tipo": tipo
+                "tipo": tipo_operacion_global   # ← aquí asignamos el valor global
             })
             progress_bar.progress((i+1)/len(archivos))
 
@@ -263,7 +263,6 @@ if archivos:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
                 st.stop()
 
-            # Correos fijos en CC (reestablecidos)
             cc_fijos = [
                 "coord-procesos@clinicalaermitadecartagena.com",
                 "profesionalprocesos2@clinicalaermitadecartagena.com",
@@ -295,7 +294,6 @@ if archivos:
                 # Determinar nombre del documento (sin código para manuales)
                 if datos.get("codigo", "").upper().startswith("R-TH-"):
                     nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
-                    # Para manuales, el código en la tabla será "No Aplica"
                     codigo_tabla = "No Aplica"
                 else:
                     nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
@@ -337,7 +335,7 @@ if archivos:
                 </table>
                 """
 
-            # Plantilla HTML completa con colores dinámicos
+            # Plantilla HTML completa (igual que antes, sin cambios)
             cuerpo_html = f"""
             <!DOCTYPE html>
             <html>
