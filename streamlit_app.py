@@ -183,14 +183,13 @@ empresa_seleccionada = st.selectbox("Empresa destinataria de la divulgación", l
 empresa_nombre = empresa_opciones[empresa_seleccionada]["nombre"]
 empresa_color = empresa_opciones[empresa_seleccionada]["color"]
 
-# ----------------- NUEVO: Selector global de tipo de operación -----------------
+# Selector global de tipo de operación
 tipo_operacion_global = st.radio(
     "Tipo de operación para todos los documentos",
     ["Creación", "Actualización"],
     index=1,  # Por defecto "Actualización"
     horizontal=True
 )
-# -----------------------------------------------------------------------------
 
 # Carga de archivos (solo PDF)
 archivos = st.file_uploader(
@@ -227,11 +226,8 @@ if archivos:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 continue
 
-            # Edición de datos (ya no incluimos el selector de tipo aquí)
             with st.expander(f"📄 Documento {i+1}: {archivo.name} - Editar datos", expanded=True):
-                # Mostrar JSON extraído
                 st.json(datos)
-                # Permitir edición manual
                 datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=PROCESOS.index(datos.get("proceso", PROCESOS[0])), key=f"proceso_{i}")
                 datos["codigo"] = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{i}")
                 datos["version"] = st.text_input("Versión", datos.get("version", ""), key=f"version_{i}")
@@ -239,11 +235,10 @@ if archivos:
                 datos["vigencia"] = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{i}")
                 datos["importancia"] = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{i}", height=80)
 
-            # Usamos el tipo global para todos los documentos
             documentos_info.append({
                 "nombre": archivo.name,
                 "datos": datos,
-                "tipo": tipo_operacion_global   # ← aquí asignamos el valor global
+                "tipo": tipo_operacion_global
             })
             progress_bar.progress((i+1)/len(archivos))
 
@@ -270,7 +265,7 @@ if archivos:
                 "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
-            # Construir lista de nombres para el encabezado (como viñetas)
+            # Lista de documentos (viñetas)
             lista_items = []
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
@@ -282,16 +277,17 @@ if archivos:
                     lista_items.append(f"<li>{nombre}</li>")
             lista_nombres_str = "<ul style='margin: 0; padding-left: 20px;'>" + "".join(lista_items) + "</ul>" if lista_items else "Sin documentos"
 
-            # Proceso a mostrar en el párrafo de cabecera (tomamos el primero)
             proceso_encabezado = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
 
-            # Generar tarjetas por documento usando el color corporativo en los encabezados de tabla
+            # Obtener la palabra clave según el tipo global (minúscula)
+            operacion_texto = tipo_operacion_global.lower()  # "creación" o "actualización"
+
+            # Generar tarjetas por documento
             tarjetas_html = ""
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
                 tipo_doc = get_tipo_documento(datos.get("codigo", ""))
 
-                # Determinar nombre del documento (sin código para manuales)
                 if datos.get("codigo", "").upper().startswith("R-TH-"):
                     nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                     codigo_tabla = "No Aplica"
@@ -335,7 +331,7 @@ if archivos:
                 </table>
                 """
 
-            # Plantilla HTML completa (igual que antes, sin cambios)
+            # Plantilla HTML completa con la palabra dinámica
             cuerpo_html = f"""
             <!DOCTYPE html>
             <html>
@@ -357,13 +353,13 @@ if archivos:
                                         </div>
                                     </td>
                                 </tr>
-                                <!-- Mensaje de avance con borde del color corporativo -->
+                                <!-- Mensaje de avance con borde del color corporativo y palabra dinámica -->
                                 <tr>
                                     <td style="padding: 20px 30px;">
                                         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f7ff; border: 1px solid {empresa_color};">
                                             <tr>
                                                 <td style="padding: 15px 20px; text-align: center; color: #004085;">
-                                                    El equipo de <strong>{proceso_encabezado}</strong> ha logrado un avance en la actualización documental y gestión del conocimiento en su área.
+                                                    El equipo de <strong>{proceso_encabezado}</strong> ha logrado un avance en la {operacion_texto} documental y gestión del conocimiento en su área.
                                                 </td>
                                             </tr>
                                         </table>
