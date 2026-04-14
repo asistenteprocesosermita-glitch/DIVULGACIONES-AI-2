@@ -7,6 +7,7 @@ import json
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
+from unicodedata import normalize  # Para normalización de texto
 
 # ------------------------------------------------------------------
 # CONFIGURACIÓN DE CLAVES 
@@ -61,6 +62,16 @@ PROCESOS = [
     "UNIDAD DE CUIDADO NEONATAL", "UNIDAD TRANSFUSIONAL", "URGENCIAS", "VACUNACIÓN",
     "INVESTIGACIÓN", "VIGILANCIA EPIDEMIOLÓGICA Y SEGURIDAD"
 ]
+
+# Función auxiliar para normalizar texto (eliminar acentos y mayúsculas)
+def normalizar_texto(texto):
+    if not texto:
+        return ""
+    texto = normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
+    return texto.strip().upper()
+
+# Pre-calcular versiones normalizadas de PROCESOS para búsqueda rápida
+PROCESOS_NORM = [normalizar_texto(p) for p in PROCESOS]
 
 # ------------------------------------------------------------------
 # MAPEO DE TIPO DE DOCUMENTO SEGÚN CÓDIGO
@@ -228,7 +239,19 @@ if archivos:
 
             with st.expander(f"📄 Documento {i+1}: {archivo.name} - Editar datos", expanded=True):
                 st.json(datos)
-                datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=PROCESOS.index(datos.get("proceso", PROCESOS[0])), key=f"proceso_{i}")
+                
+                # --- Manejo seguro del proceso ---
+                proceso_sugerido = datos.get("proceso", "").strip()
+                # Normalizar el sugerido para comparar
+                proceso_norm = normalizar_texto(proceso_sugerido)
+                try:
+                    # Buscar índice usando la lista normalizada
+                    idx_proceso = PROCESOS_NORM.index(proceso_norm)
+                except ValueError:
+                    # Si no coincide, usar el primer elemento (índice 0)
+                    idx_proceso = 0
+                datos["proceso"] = st.selectbox("Proceso", PROCESOS, index=idx_proceso, key=f"proceso_{i}")
+                
                 datos["codigo"] = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{i}")
                 datos["version"] = st.text_input("Versión", datos.get("version", ""), key=f"version_{i}")
                 datos["documento"] = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{i}")
