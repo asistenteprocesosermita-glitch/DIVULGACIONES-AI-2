@@ -4,7 +4,7 @@ import PyPDF2
 import google.generativeai as genai
 import smtplib
 import json
-import pandas as pd  # Para leer Excel
+import pandas as pd
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -78,7 +78,9 @@ PROCESOS_NORM = [normalizar_texto(p) for p in PROCESOS]
 def get_tipo_documento(codigo):
     if not codigo:
         return "documento"
-    partes = codigo.split('-')
+    # Aseguramos que codigo sea string
+    codigo_str = str(codigo)
+    partes = codigo_str.split('-')
     prefijo = partes[0].upper() if partes else ""
     mapeo = {
         "D": "Política o Directriz", "C": "Caracterización de proceso",
@@ -99,19 +101,12 @@ def extraer_texto_pdf(archivo):
     return texto
 
 def extraer_texto_excel(archivo):
-    """
-    Lee un archivo Excel (xlsx o xls) y devuelve todo el contenido como texto,
-    concatenando celdas con espacios.
-    """
     try:
-        # Leer el archivo (pandas detecta automáticamente la extensión)
-        df = pd.read_excel(archivo, sheet_name=None, dtype=str)  # sheet_name=None lee todas las hojas
+        df = pd.read_excel(archivo, sheet_name=None, dtype=str)
         texto_completo = []
         for nombre_hoja, hoja in df.items():
             texto_completo.append(f"--- Hoja: {nombre_hoja} ---")
-            # Convertir toda la hoja a texto, reemplazando NaN por cadena vacía
             hoja_str = hoja.fillna('').astype(str)
-            # Concatenar todas las celdas fila por fila
             for _, fila in hoja_str.iterrows():
                 texto_completo.append(' '.join(fila.values))
         return '\n'.join(texto_completo)
@@ -119,7 +114,7 @@ def extraer_texto_excel(archivo):
         raise Exception(f"Error al leer Excel: {e}")
 
 # ------------------------------------------------------------------
-# ANÁLISIS CON GEMINI
+# ANÁLISIS CON GEMINI (con sanitización de None)
 # ------------------------------------------------------------------
 def analizar_documento(texto, filename):
     prompt = f"""
@@ -147,7 +142,18 @@ def analizar_documento(texto, filename):
     fin = texto_respuesta.rfind('}') + 1
     if inicio != -1 and fin != 0:
         datos = json.loads(texto_respuesta[inicio:fin])
-        if datos.get("codigo", "").upper().startswith("R-TH-"):
+        
+        # --- SANITIZACIÓN: convertir None a string vacío y asegurar strings ---
+        for clave in ["proceso", "codigo", "version", "documento", "vigencia", "importancia", "cargo", "consecutivo"]:
+            valor = datos.get(clave)
+            if valor is None:
+                datos[clave] = ""
+            else:
+                datos[clave] = str(valor)
+        
+        # Ajuste para manuales (usando el codigo ya sanitizado)
+        codigo = datos.get("codigo", "")
+        if codigo.upper().startswith("R-TH-"):
             if not datos.get("cargo"):
                 base = os.path.splitext(os.path.basename(filename))[0]
                 datos["cargo"] = base
@@ -206,7 +212,6 @@ tipo_operacion_global = st.radio(
     horizontal=True
 )
 
-# Permitir PDF y Excel
 archivos = st.file_uploader(
     "Selecciona los documentos (máx 5, PDF o Excel)",
     type=["pdf", "xlsx", "xls"],
@@ -229,7 +234,6 @@ if archivos:
         for i, archivo in enumerate(archivos):
             status_text.text(f"Procesando {archivo.name}...")
             
-            # Extraer texto según extensión
             extension = os.path.splitext(archivo.name)[1].lower()
             try:
                 if extension == ".pdf":
@@ -303,10 +307,12 @@ if archivos:
             lista_items = []
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
-                if datos.get("codigo", "").upper().startswith("R-TH-"):
+                # Aseguramos que el código sea string
+                codigo = str(datos.get("codigo", ""))
+                if codigo.upper().startswith("R-TH-"):
                     nombre = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                 else:
-                    nombre = f"{datos.get('codigo', '')} {datos.get('documento', '')}".strip()
+                    nombre = f"{codigo} {datos.get('documento', '')}".strip()
                 if nombre:
                     lista_items.append(f"<li>{nombre}</li>")
             lista_nombres_str = "<ul style='margin: 0; padding-left: 20px;'>" + "".join(lista_items) + "</ul>" if lista_items else "Sin documentos"
@@ -317,14 +323,15 @@ if archivos:
             tarjetas_html = ""
             for doc in st.session_state["documentos_info"]:
                 datos = doc["datos"]
-                tipo_doc = get_tipo_documento(datos.get("codigo", ""))
+                codigo = str(datos.get("codigo", ""))
+                tipo_doc = get_tipo_documento(codigo)
 
-                if datos.get("codigo", "").upper().startswith("R-TH-"):
+                if codigo.upper().startswith("R-TH-"):
                     nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                     codigo_tabla = "No Aplica"
                 else:
-                    nombre_documento = f"{tipo_doc} {datos.get('codigo', '')} {datos.get('documento', '')}".strip()
-                    codigo_tabla = datos.get("codigo", "") or "N/A"
+                    nombre_documento = f"{tipo_doc} {codigo} {datos.get('documento', '')}".strip()
+                    codigo_tabla = codigo or "N/A"
 
                 version = datos.get("version", "") or "N/A"
                 vigencia = datos.get("vigencia", "") or "N/A"
@@ -375,41 +382,51 @@ if archivos:
                                 <div style="font-size:13px; border-top:1px solid rgba(255,255,255,0.3); padding-top:12px;">
                                     <strong>Documentos asociados:</strong><br>{lista_nombres_str}
                                 </div>
-                            </td></tr>
+                            </td>
+                            </tr>
                             <tr><td style="padding:20px 30px;">
                                 <table width="100%" style="background-color:#f0f7ff; border:1px solid {empresa_color};">
                                     <tr><td style="padding:15px; text-align:center; color:#004085;">
                                         El equipo de <strong>{proceso_encabezado}</strong> ha logrado un avance en la {operacion_texto} documental y gestión del conocimiento en su área.
-                                    </td></tr>
+                                    </td>
+                                </tr>
                                 </table>
-                            </td></tr>
-                            <tr><td style="padding:10px 30px;">{tarjetas_html}</td></tr>
+                            </td>
+                            </tr>
+                            <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
+                            </tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
                                     <tr><td style="padding:15px;">
                                         <h4 style="margin:0 0 10px; color:#cc0000;">📢 SOCIALIZACIÓN Y APLICACIÓN INMEDIATA</h4>
                                         <ul><li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
                                         <li><strong style="color:#cc0000;">Conforme a lo establecido P-PRC-001 Procedimiento de Control Documental, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</strong></li></ul>
-                                    </td></tr>
+                                    </td>
+                                </tr>
                                 </table>
-                            </td></tr>
+                            </td>
+                            </tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#f8f9fa; border:1px solid #d1d5db;">
                                     <tr><td style="padding:20px; text-align:center;">
                                         <h3 style="margin:0 0 10px; color:#003366;">Acceso a Plataforma IT SOLUTION</h3>
                                         <p><strong>Ruta:</strong> Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.</p>
                                         <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
-                                    </td></tr>
+                                    </td>
+                                </tr>
                                 </table>
-                            </td></tr>
+                            </td>
+                            </tr>
                             <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
                                 <p style="font-weight:bold; color:#003366;">¡HAZ PARTE DEL CAMBIO!</p>
                                 <p>#TransformaciónDigitalDeLosProcesos</p>
                                 <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
                                 <p>Si desea comunicarse con el área de procesos, escriba a:<br>{', '.join(cc_fijos)}</p>
-                            </td></tr>
+                            </td>
+                            </tr>
                         </table>
-                    </td></tr>
+                    </td>
+                </tr>
                 </table>
             </body>
             </html>
