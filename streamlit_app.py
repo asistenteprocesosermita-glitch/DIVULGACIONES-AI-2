@@ -110,9 +110,9 @@ def extraer_texto_excel(archivo):
         raise Exception(f"Error al leer Excel: {e}")
 
 # ------------------------------------------------------------------
-# ANÁLISIS CON GEMINI (MEJORADO)
+# ANÁLISIS CON GEMINI
 # ------------------------------------------------------------------
-def analizar_documento(texto, filename, debug=False):
+def analizar_documento(texto, filename):
     prompt = f"""
     Eres un asistente que extrae información de documentos internos de una clínica.
     Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
@@ -129,14 +129,12 @@ def analizar_documento(texto, filename, debug=False):
     {', '.join(PROCESOS)}
 
     Texto del documento:
-    {texto[:10000]}  # Limitamos a 10000 caracteres para no exceder tokens
+    {texto[:10000]}
     """
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
         raw_response = response.text
-        if debug:
-            st.info(f"Respuesta cruda de Gemini:\n```\n{raw_response}\n```")
         inicio = raw_response.find('{')
         fin = raw_response.rfind('}') + 1
         if inicio != -1 and fin != 0:
@@ -160,7 +158,6 @@ def analizar_documento(texto, filename, debug=False):
         return datos
     except Exception as e:
         st.error(f"Error en IA: {e}")
-        # Devolver un diccionario vacío para que el usuario pueda llenar manualmente
         return {
             "proceso": "", "codigo": "", "version": "", "documento": "",
             "vigencia": "", "importancia": "", "cargo": "", "consecutivo": ""
@@ -199,9 +196,6 @@ st.markdown("""
         <p style="font-size: 1rem; color: #555;">Carga hasta 5 documentos (PDF o Excel). La IA extraerá los datos y podrás editarlos antes de enviar el correo.</p>
     </div>
 """, unsafe_allow_html=True)
-
-# Opción de depuración
-debug_mode = st.checkbox("🔧 Modo depuración (ver respuesta de Gemini)", value=False)
 
 empresa_opciones = {
     "Clínica La Ermita": {"nombre": "CLÍNICA LA ERMITA", "color": "#6ab0de"},
@@ -257,10 +251,10 @@ if archivos:
                 continue
 
             try:
-                datos = analizar_documento(texto, archivo.name, debug=debug_mode)
+                datos = analizar_documento(texto, archivo.name)
             except Exception as e:
                 st.error(f"Error en IA para {archivo.name}: {e}")
-                datos = {}  # Vacío para llenado manual
+                datos = {}
 
             documentos_info.append({
                 "nombre": archivo.name,
@@ -273,17 +267,14 @@ if archivos:
         st.session_state["documentos_info"] = documentos_info
         st.rerun()
 
-    # Mostrar los editores si ya hay datos
     if st.session_state["documentos_info"] is not None:
         st.divider()
-        st.subheader("Edición de datos extraídos")
-        st.info("Los cambios se guardan automáticamente. Puedes editar todos los campos y luego hacer clic en 'Enviar correo'.")
+        st.subheader("✏️ Edición de datos extraídos")
+        st.info("✏️ Los cambios se guardan automáticamente. Puedes editar todos los campos y luego hacer clic en 'Enviar correo'.")
 
-        # Crear los campos de edición, usando keys únicas y actualizando session_state en tiempo real
         for idx, doc in enumerate(st.session_state["documentos_info"]):
             datos = doc["datos"]
             with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
-                # Proceso (selectbox)
                 proceso_sugerido = datos.get("proceso", "").strip()
                 proceso_norm = normalizar_texto(proceso_sugerido)
                 try:
@@ -291,16 +282,12 @@ if archivos:
                 except ValueError:
                     idx_proceso = 0
                 nuevo_proceso = st.selectbox("Proceso", PROCESOS, index=idx_proceso, key=f"proceso_{idx}")
-                
-                # Resto de campos
                 nuevo_codigo = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{idx}")
                 nuevo_version = st.text_input("Versión", datos.get("version", ""), key=f"version_{idx}")
                 nuevo_documento = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{idx}")
                 nuevo_vigencia = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{idx}")
                 nuevo_importancia = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{idx}", height=80)
 
-                # Actualizar el session_state inmediatamente con los valores actuales de los widgets
-                # Esto es necesario porque los valores de los widgets se leen a través de st.session_state con la misma key
                 st.session_state["documentos_info"][idx]["datos"] = {
                     "proceso": nuevo_proceso,
                     "codigo": nuevo_codigo,
@@ -312,14 +299,13 @@ if archivos:
                     "consecutivo": datos.get("consecutivo", "")
                 }
 
-        # Sección de envío
         st.divider()
         st.subheader("📧 Envío de correo")
         destinatarios_input = st.text_input(
             "Correos destinatarios (Para, separados por coma)",
             value=""
         )
-        if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
+        if st.button("📨 Enviar correo de divulgación", use_container_width=True):
             destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
             if not destinatarios_lista:
                 st.error("Debes ingresar al menos un destinatario en el campo Para.")
@@ -332,10 +318,8 @@ if archivos:
                 "aprendiz-procesos2@clinicalaermitadecartagena.com"
             ]
 
-            # Recoger datos actualizados (ya están en session_state)
             docs = st.session_state["documentos_info"]
 
-            # Construir viñetas
             lista_items = []
             for doc in docs:
                 datos = doc["datos"]
@@ -425,7 +409,7 @@ if archivos:
                             </td>
                             </tr>
                             <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
-                            </tr>
+                            <tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
                                     <tr><td style="padding:15px;">
@@ -456,7 +440,7 @@ if archivos:
                             </td>
                             </tr>
                         </table>
-                    </td>
+                    </tr>
                 </table>
                 </table>
             </body>
