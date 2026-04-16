@@ -262,204 +262,205 @@ if archivos:
         st.session_state["documentos_info"] = documentos_info
         st.rerun()
 
-    # Si ya hay documentos procesados, mostramos los editores (sin formulario ni botón guardar)
+    # Si ya hay documentos procesados, mostramos los editores dentro de un formulario
     if st.session_state["documentos_info"] is not None:
         st.divider()
         st.subheader("✏️ Edición de datos extraídos")
-        st.info("✏️ Los cambios se guardan automáticamente. Puedes editar todos los campos y luego hacer clic en 'Enviar correo'.")
+        st.info("Realiza los cambios necesarios y luego haz clic en 'Guardar cambios'. Los expanders se mantendrán abiertos.")
 
-        # Mostrar expanders con campos editables, cada campo tiene una clave única
-        for idx, doc in enumerate(st.session_state["documentos_info"]):
-            datos = doc["datos"]
-            with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
-                st.markdown("**Datos extraídos (puedes editarlos):**")
-                
-                # Proceso (selectbox)
-                proceso_sugerido = datos.get("proceso", "").strip()
-                proceso_norm = normalizar_texto(proceso_sugerido)
-                try:
-                    idx_proceso = PROCESOS_NORM.index(proceso_norm)
-                except ValueError:
-                    idx_proceso = 0
-                nuevo_proceso = st.selectbox("Proceso", PROCESOS, index=idx_proceso, key=f"proceso_{idx}")
-                
-                # Los demás campos se guardan directamente en session_state mediante key
-                nuevo_codigo = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{idx}")
-                nuevo_version = st.text_input("Versión", datos.get("version", ""), key=f"version_{idx}")
-                nuevo_documento = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{idx}")
-                nuevo_vigencia = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{idx}")
-                nuevo_importancia = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{idx}", height=80)
+        with st.form(key="edit_form"):
+            documentos_actualizados = []
+            for idx, doc in enumerate(st.session_state["documentos_info"]):
+                datos = doc["datos"]
+                with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
+                    st.markdown("**Datos extraídos (puedes editarlos):**")
+                    proceso_sugerido = datos.get("proceso", "").strip()
+                    proceso_norm = normalizar_texto(proceso_sugerido)
+                    try:
+                        idx_proceso = PROCESOS_NORM.index(proceso_norm)
+                    except ValueError:
+                        idx_proceso = 0
+                    nuevo_proceso = st.selectbox("Proceso", PROCESOS, index=idx_proceso, key=f"proceso_{idx}")
+                    nuevo_codigo = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{idx}")
+                    nuevo_version = st.text_input("Versión", datos.get("version", ""), key=f"version_{idx}")
+                    nuevo_documento = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{idx}")
+                    nuevo_vigencia = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{idx}")
+                    nuevo_importancia = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{idx}", height=80)
 
-                # Actualizar los datos en session_state inmediatamente (usando los valores de los widgets)
-                # Esto es necesario porque al enviar el correo necesitamos los valores actuales.
-                # No usamos on_change, simplemente al enviar leeremos de st.session_state.
-                # Pero para mantener consistencia, también actualizamos el diccionario interno.
-                st.session_state["documentos_info"][idx]["datos"] = {
-                    "proceso": nuevo_proceso,
-                    "codigo": nuevo_codigo,
-                    "version": nuevo_version,
-                    "documento": nuevo_documento,
-                    "vigencia": nuevo_vigencia,
-                    "importancia": nuevo_importancia,
-                    "cargo": datos.get("cargo", ""),
-                    "consecutivo": datos.get("consecutivo", "")
-                }
+                    datos_actualizados = {
+                        "proceso": nuevo_proceso,
+                        "codigo": nuevo_codigo,
+                        "version": nuevo_version,
+                        "documento": nuevo_documento,
+                        "vigencia": nuevo_vigencia,
+                        "importancia": nuevo_importancia,
+                        "cargo": datos.get("cargo", ""),
+                        "consecutivo": datos.get("consecutivo", "")
+                    }
+                    documentos_actualizados.append({
+                        "nombre": doc["nombre"],
+                        "datos": datos_actualizados,
+                        "tipo": doc["tipo"]
+                    })
+
+            submitted = st.form_submit_button("💾 Guardar cambios")
+            if submitted:
+                st.session_state["documentos_info"] = documentos_actualizados
+                st.toast("✅ Cambios guardados", icon="✅")
+                st.rerun()
 
         # Sección de envío
-        st.divider()
-        st.subheader("📧 Envío de correo")
-        destinatarios_input = st.text_input(
-            "Correos destinatarios (Para, separados por coma)",
-            value=""
-        )
-        if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
-            destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
-            if not destinatarios_lista:
-                st.error("Debes ingresar al menos un destinatario en el campo Para.")
-                st.stop()
+        if st.session_state["documentos_info"] is not None:
+            st.divider()
+            st.subheader("📧 Envío de correo")
+            destinatarios_input = st.text_input(
+                "Correos destinatarios (Para, separados por coma)",
+                value=""
+            )
+            if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
+                destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
+                if not destinatarios_lista:
+                    st.error("Debes ingresar al menos un destinatario en el campo Para.")
+                    st.stop()
 
-            cc_fijos = [
-                "coord-procesos@clinicalaermitadecartagena.com",
-                "profesionalprocesos2@clinicalaermitadecartagena.com",
-                "asistente-procesos@clinicalaermitadecartagena.com",
-                "aprendiz-procesos2@clinicalaermitadecartagena.com"
-            ]
+                cc_fijos = [
+                    "coord-procesos@clinicalaermitadecartagena.com",
+                    "profesionalprocesos2@clinicalaermitadecartagena.com",
+                    "asistente-procesos@clinicalaermitadecartagena.com",
+                    "aprendiz-procesos2@clinicalaermitadecartagena.com"
+                ]
 
-            # Recoger los datos actualizados desde session_state (ya se actualizan en cada cambio)
-            documentos_actualizados = st.session_state["documentos_info"]
+                lista_items = []
+                for doc in st.session_state["documentos_info"]:
+                    datos = doc["datos"]
+                    codigo = str(datos.get("codigo", ""))
+                    if codigo.upper().startswith("R-TH-"):
+                        nombre = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
+                    else:
+                        nombre = f"{codigo} {datos.get('documento', '')}".strip()
+                    if nombre:
+                        lista_items.append(f"<li>{nombre}</li>")
+                lista_nombres_str = "<ul style='margin: 0; padding-left: 20px;'>" + "".join(lista_items) + "</ul>" if lista_items else "Sin documentos"
 
-            # Construir lista de nombres para el encabezado (viñetas)
-            lista_items = []
-            for doc in documentos_actualizados:
-                datos = doc["datos"]
-                codigo = str(datos.get("codigo", ""))
-                if codigo.upper().startswith("R-TH-"):
-                    nombre = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
-                else:
-                    nombre = f"{codigo} {datos.get('documento', '')}".strip()
-                if nombre:
-                    lista_items.append(f"<li>{nombre}</li>")
-            lista_nombres_str = "<ul style='margin: 0; padding-left: 20px;'>" + "".join(lista_items) + "</ul>" if lista_items else "Sin documentos"
+                proceso_encabezado = st.session_state["documentos_info"][0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
+                operacion_texto = tipo_operacion_global.lower()
 
-            proceso_encabezado = documentos_actualizados[0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
-            operacion_texto = tipo_operacion_global.lower()
+                tarjetas_html = ""
+                for doc in st.session_state["documentos_info"]:
+                    datos = doc["datos"]
+                    codigo = str(datos.get("codigo", ""))
+                    tipo_doc = get_tipo_documento(codigo)
 
-            tarjetas_html = ""
-            for doc in documentos_actualizados:
-                datos = doc["datos"]
-                codigo = str(datos.get("codigo", ""))
-                tipo_doc = get_tipo_documento(codigo)
+                    if codigo.upper().startswith("R-TH-"):
+                        nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
+                        codigo_tabla = "No Aplica"
+                    else:
+                        nombre_documento = f"{tipo_doc} {codigo} {datos.get('documento', '')}".strip()
+                        codigo_tabla = codigo or "N/A"
 
-                if codigo.upper().startswith("R-TH-"):
-                    nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
-                    codigo_tabla = "No Aplica"
-                else:
-                    nombre_documento = f"{tipo_doc} {codigo} {datos.get('documento', '')}".strip()
-                    codigo_tabla = codigo or "N/A"
+                    version = datos.get("version", "") or "N/A"
+                    vigencia = datos.get("vigencia", "") or "N/A"
+                    importancia = datos.get("importancia", "") or "N/A"
 
-                version = datos.get("version", "") or "N/A"
-                vigencia = datos.get("vigencia", "") or "N/A"
-                importancia = datos.get("importancia", "") or "N/A"
+                    tarjetas_html += f"""
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px;">
+                        <tr>
+                            <td style="background-color: #f4f4f4; padding: 10px 15px; border: 1px solid #cccccc; border-bottom: none;">
+                                <strong style="font-size: 16px; color: #003366;">📄 {nombre_documento}</strong>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #cccccc; padding: 0;">
+                                <table width="100%" cellpadding="8" cellspacing="0" border="0" style="border-collapse: collapse;">
+                                    <tr>
+                                        <td width="30%" style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VERSIÓN</td>
+                                        <td width="70%" style="border-bottom: 1px solid #dddddd;">{version}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
+                                        <td style="border-bottom: 1px solid #dddddd;">{codigo_tabla}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
+                                        <td style="border-bottom: 1px solid #dddddd;">{vigencia}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="background-color: {empresa_color}; color: white; font-weight: bold;">IMPORTANCIA</td>
+                                        <td>{importancia}</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                    """
 
-                tarjetas_html += f"""
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px;">
-                    <tr>
-                        <td style="background-color: #f4f4f4; padding: 10px 15px; border: 1px solid #cccccc; border-bottom: none;">
-                            <strong style="font-size: 16px; color: #003366;">📄 {nombre_documento}</strong>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #cccccc; padding: 0;">
-                            <table width="100%" cellpadding="8" cellspacing="0" border="0" style="border-collapse: collapse;">
-                                <tr>
-                                    <td width="30%" style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VERSIÓN</td>
-                                    <td width="70%" style="border-bottom: 1px solid #dddddd;">{version}</td>
+                cuerpo_html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head><meta charset="UTF-8"></head>
+                <body style="margin:0; padding:0; font-family: Arial, sans-serif; background-color: #f4f7f9;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f7f9;">
+                        <tr><td align="center">
+                            <table width="700" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-collapse: collapse;">
+                                <tr><td style="background-color: {empresa_color}; color: #ffffff; padding: 20px 30px;">
+                                    <h1 style="margin:0 0 10px; font-size:22px;">Divulgación de Documentos</h1>
+                                    <div style="font-size:13px; border-top:1px solid rgba(255,255,255,0.3); padding-top:12px;">
+                                        <strong>Documentos asociados:</strong><br>{lista_nombres_str}
+                                    </div>
+                                </td>
                                 </tr>
-                                <tr>
-                                    <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
-                                    <td style="border-bottom: 1px solid #dddddd;">{codigo_tabla}</td>
+                                <tr><td style="padding:20px 30px;">
+                                    <table width="100%" style="background-color:#f0f7ff; border:1px solid {empresa_color};">
+                                        <tr><td style="padding:15px; text-align:center; color:#004085;">
+                                            El equipo de <strong>{proceso_encabezado}</strong> ha logrado un avance en la {operacion_texto} documental y gestión del conocimiento en su área.
+                                        </td>
+                                        </tr>
+                                    </table>
+                                </td>
                                 </tr>
-                                <tr>
-                                    <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
-                                    <td style="border-bottom: 1px solid #dddddd;">{vigencia}</td>
+                                <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
                                 </tr>
-                                <tr>
-                                    <td style="background-color: {empresa_color}; color: white; font-weight: bold;">IMPORTANCIA</td>
-                                    <td>{importancia}</td>
+                                <tr><td style="padding:0 30px 20px 30px;">
+                                    <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
+                                        <tr><td style="padding:15px;">
+                                            <h4 style="margin:0 0 10px; color:#cc0000;">📢 SOCIALIZACIÓN Y APLICACIÓN INMEDIATA</h4>
+                                            <ul><li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
+                                            <li><strong style="color:#cc0000;">Conforme a lo establecido P-PRC-001 Procedimiento de Control Documental, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</strong></li></ul>
+                                        </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                                </tr>
+                                <tr><td style="padding:0 30px 20px 30px;">
+                                    <table width="100%" style="background-color:#f8f9fa; border:1px solid #d1d5db;">
+                                        <tr><td style="padding:20px; text-align:center;">
+                                            <h3 style="margin:0 0 10px; color:#003366;">Acceso a Plataforma IT SOLUTION</h3>
+                                            <p><strong>Ruta:</strong> Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.</p>
+                                            <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
+                                        </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                                </tr>
+                                <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
+                                    <p style="font-weight:bold; color:#003366;">¡HAZ PARTE DEL CAMBIO!</p>
+                                    <p>#TransformaciónDigitalDeLosProcesos</p>
+                                    <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
+                                    <p>Si desea comunicarse con el área de procesos, escriba a:<br>{', '.join(cc_fijos)}</p>
+                                </td>
                                 </tr>
                             </table>
                         </td>
                     </tr>
                 </table>
+                </body>
+                </html>
                 """
 
-            cuerpo_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head><meta charset="UTF-8"></head>
-            <body style="margin:0; padding:0; font-family: Arial, sans-serif; background-color: #f4f7f9;">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f7f9;">
-                    <tr><td align="center">
-                        <table width="700" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-collapse: collapse;">
-                            <tr><td style="background-color: {empresa_color}; color: #ffffff; padding: 20px 30px;">
-                                <h1 style="margin:0 0 10px; font-size:22px;">Divulgación de Documentos</h1>
-                                <div style="font-size:13px; border-top:1px solid rgba(255,255,255,0.3); padding-top:12px;">
-                                    <strong>Documentos asociados:</strong><br>{lista_nombres_str}
-                                </div>
-                            </td>
-                            </tr>
-                            <tr><td style="padding:20px 30px;">
-                                <table width="100%" style="background-color:#f0f7ff; border:1px solid {empresa_color};">
-                                    <tr><td style="padding:15px; text-align:center; color:#004085;">
-                                        El equipo de <strong>{proceso_encabezado}</strong> ha logrado un avance en la {operacion_texto} documental y gestión del conocimiento en su área.
-                                    </td>
-                                </tr>
-                                </table>
-                            </td>
-                            </tr>
-                            <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
-                            </tr>
-                            <tr><td style="padding:0 30px 20px 30px;">
-                                <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
-                                    <tr><td style="padding:15px;">
-                                        <h4 style="margin:0 0 10px; color:#cc0000;">📢 SOCIALIZACIÓN Y APLICACIÓN INMEDIATA</h4>
-                                        <ul><li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
-                                        <li><strong style="color:#cc0000;">Conforme a lo establecido P-PRC-001 Procedimiento de Control Documental, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</strong></li></ul>
-                                    </td>
-                                </tr>
-                                </table>
-                            </td>
-                            </tr>
-                            <tr><td style="padding:0 30px 20px 30px;">
-                                <table width="100%" style="background-color:#f8f9fa; border:1px solid #d1d5db;">
-                                    <tr><td style="padding:20px; text-align:center;">
-                                        <h3 style="margin:0 0 10px; color:#003366;">Acceso a Plataforma IT SOLUTION</h3>
-                                        <p><strong>Ruta:</strong> Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.</p>
-                                        <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
-                                    </td>
-                                </tr>
-                                </table>
-                            </td>
-                            </tr>
-                            <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
-                                <p style="font-weight:bold; color:#003366;">¡HAZ PARTE DEL CAMBIO!</p>
-                                <p>#TransformaciónDigitalDeLosProcesos</p>
-                                <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
-                                <p>Si desea comunicarse con el área de procesos, escriba a:<br>{', '.join(cc_fijos)}</p>
-                            </td>
-                            </tr>
-                        </table>
-                    </td>
-                </table>
-                </table>
-            </body>
-            </html>
-            """
+                asunto = f"Divulgación de Documentos - {datetime.now().strftime('%Y.%m.%d')} - {empresa_seleccionada}"
 
-            asunto = f"Divulgación de Documentos - {datetime.now().strftime('%Y.%m.%d')} - {empresa_seleccionada}"
-
-            with st.spinner("Enviando correo..."):
-                if enviar_correo(destinatarios_lista, cc_fijos, asunto, cuerpo_html):
-                    st.success("✅ Correo enviado correctamente.")
-                else:
-                    st.error("❌ Falló el envío. Revisa la configuración SMTP.")
+                with st.spinner("Enviando correo..."):
+                    if enviar_correo(destinatarios_lista, cc_fijos, asunto, cuerpo_html):
+                        st.success("✅ Correo enviado correctamente.")
+                    else:
+                        st.error("❌ Falló el envío. Revisa la configuración SMTP.")
