@@ -276,8 +276,8 @@ if archivos:
     # Mostrar los editores si ya hay datos
     if st.session_state["documentos_info"] is not None:
         st.divider()
-        st.subheader("✏️ Edición de datos extraídos")
-        st.info("✏️ Los cambios se guardan automáticamente. Puedes editar todos los campos y luego hacer clic en 'Enviar correo'.")
+        st.subheader("Edición de datos extraídos")
+        st.info("Los cambios se guardan automáticamente. Puedes editar todos los campos y luego hacer clic en 'Enviar correo'.")
 
         # Crear los campos de edición, usando keys únicas y actualizando session_state en tiempo real
         for idx, doc in enumerate(st.session_state["documentos_info"]):
