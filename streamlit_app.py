@@ -113,7 +113,7 @@ def extraer_texto_excel(archivo):
         raise Exception(f"Error al leer Excel: {e}")
 
 # ------------------------------------------------------------------
-# ANÁLISIS CON GEMINI (con sanitización de None)
+# ANÁLISIS CON GEMINI
 # ------------------------------------------------------------------
 def analizar_documento(texto, filename):
     prompt = f"""
@@ -145,8 +145,6 @@ def analizar_documento(texto, filename):
         for clave in ["proceso", "codigo", "version", "documento", "vigencia", "importancia", "cargo", "consecutivo"]:
             if datos.get(clave) is None:
                 datos[clave] = ""
-            else:
-                datos[clave] = str(datos[clave])
         # Ajustes para manuales
         codigo = datos.get("codigo", "")
         if codigo.upper().startswith("R-TH-"):
@@ -220,7 +218,6 @@ if archivos and len(archivos) > 5:
 
 # Procesamiento inicial (solo una vez)
 if archivos:
-    # Inicializar estado si no existe
     if "documentos_info" not in st.session_state:
         st.session_state["documentos_info"] = None
 
@@ -263,15 +260,15 @@ if archivos:
 
         status_text.text("¡Análisis completado!")
         st.session_state["documentos_info"] = documentos_info
-        st.rerun()  # Recargar para mostrar la sección de edición
+        st.rerun()  # Forzar recarga para mostrar los editores
 
-    # Si ya hay datos procesados, mostrar editores dentro de un formulario
+    # Si ya hay documentos procesados, mostramos los editores dentro de un formulario
     if st.session_state["documentos_info"] is not None:
         st.divider()
         st.subheader("✏️ Edición de datos extraídos")
-        st.info("Realiza los cambios necesarios y haz clic en 'Guardar cambios'. Los expanders permanecerán abiertos.")
+        st.info("Realiza los cambios necesarios y luego haz clic en 'Guardar cambios'. Los expanders se mantendrán abiertos.")
 
-        # Formulario que agrupa todos los campos editables
+        # Formulario que engloba todos los expanders
         with st.form(key="edit_form"):
             documentos_actualizados = []
             for idx, doc in enumerate(st.session_state["documentos_info"]):
@@ -293,7 +290,7 @@ if archivos:
                     nuevo_vigencia = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{idx}")
                     nuevo_importancia = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{idx}", height=80)
 
-                    # Conservar campos extra (cargo, consecutivo) si existen
+                    # Actualizar el diccionario con los nuevos valores
                     datos_actualizados = {
                         "proceso": nuevo_proceso,
                         "codigo": nuevo_codigo,
@@ -301,6 +298,7 @@ if archivos:
                         "documento": nuevo_documento,
                         "vigencia": nuevo_vigencia,
                         "importancia": nuevo_importancia,
+                        # Conservamos los campos extra (cargo, consecutivo) si existen
                         "cargo": datos.get("cargo", ""),
                         "consecutivo": datos.get("consecutivo", "")
                     }
@@ -317,7 +315,7 @@ if archivos:
                 st.success("✅ Datos actualizados correctamente. Ahora puedes enviar el correo.")
                 st.rerun()
 
-        # Sección de envío después de la edición
+        # Después del formulario, mostramos la sección de envío
         if st.session_state["documentos_info"] is not None:
             st.divider()
             st.subheader("📧 Envío de correo")
@@ -325,7 +323,6 @@ if archivos:
                 "Correos destinatarios (Para, separados por coma)",
                 value=""
             )
-
             if st.button("📨 Enviar correo con todos los documentos", use_container_width=True):
                 destinatarios_lista = [d.strip() for d in destinatarios_input.split(",") if d.strip()]
                 if not destinatarios_lista:
@@ -339,7 +336,7 @@ if archivos:
                     "aprendiz-procesos2@clinicalaermitadecartagena.com"
                 ]
 
-                # Lista de documentos (viñetas)
+                # Construir lista de nombres para el encabezado (viñetas)
                 lista_items = []
                 for doc in st.session_state["documentos_info"]:
                     datos = doc["datos"]
