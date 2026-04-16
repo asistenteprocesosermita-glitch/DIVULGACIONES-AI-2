@@ -184,11 +184,6 @@ def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
 # ------------------------------------------------------------------
 st.set_page_config(page_title="Divulgaciones AI", layout="centered", page_icon="📢")
 
-# Mostrar mensaje de éxito si se acaba de guardar
-if "show_saved_msg" in st.session_state and st.session_state["show_saved_msg"]:
-    st.success("✅ Cambios guardados")
-    st.session_state["show_saved_msg"] = False
-
 st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
         <h1 style="font-size: 2.5rem; font-weight: bold; color: #003366;">📢 DIVULGACIONES AUTOMÁTICAS</h1>
@@ -311,7 +306,7 @@ if archivos:
             submitted = st.form_submit_button("💾 Guardar cambios")
             if submitted:
                 st.session_state["documentos_info"] = documentos_actualizados
-                st.session_state["show_saved_msg"] = True
+                st.toast("✅ Cambios guardados", icon="✅")
                 st.rerun()
 
         # Sección de envío
@@ -457,7 +452,7 @@ if archivos:
                             </table>
                         </td>
                     </tr>
-                    </table>
+                </table>
                 </body>
                 </html>
                 """
