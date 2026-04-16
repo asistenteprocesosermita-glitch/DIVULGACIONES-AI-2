@@ -260,7 +260,7 @@ if archivos:
 
         status_text.text("¡Análisis completado!")
         st.session_state["documentos_info"] = documentos_info
-        st.rerun()  # Forzar recarga para mostrar los editores
+        st.rerun()
 
     # Si ya hay documentos procesados, mostramos los editores dentro de un formulario
     if st.session_state["documentos_info"] is not None:
@@ -268,14 +268,12 @@ if archivos:
         st.subheader("✏️ Edición de datos extraídos")
         st.info("Realiza los cambios necesarios y luego haz clic en 'Guardar cambios'. Los expanders se mantendrán abiertos.")
 
-        # Formulario que engloba todos los expanders
         with st.form(key="edit_form"):
             documentos_actualizados = []
             for idx, doc in enumerate(st.session_state["documentos_info"]):
                 datos = doc["datos"]
                 with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
                     st.markdown("**Datos extraídos (puedes editarlos):**")
-                    # Proceso (selectbox)
                     proceso_sugerido = datos.get("proceso", "").strip()
                     proceso_norm = normalizar_texto(proceso_sugerido)
                     try:
@@ -283,14 +281,12 @@ if archivos:
                     except ValueError:
                         idx_proceso = 0
                     nuevo_proceso = st.selectbox("Proceso", PROCESOS, index=idx_proceso, key=f"proceso_{idx}")
-                    # Resto de campos
                     nuevo_codigo = st.text_input("Código", datos.get("codigo", ""), key=f"codigo_{idx}")
                     nuevo_version = st.text_input("Versión", datos.get("version", ""), key=f"version_{idx}")
                     nuevo_documento = st.text_input("Documento", datos.get("documento", ""), key=f"documento_{idx}")
                     nuevo_vigencia = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{idx}")
                     nuevo_importancia = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{idx}", height=80)
 
-                    # Actualizar el diccionario con los nuevos valores
                     datos_actualizados = {
                         "proceso": nuevo_proceso,
                         "codigo": nuevo_codigo,
@@ -298,7 +294,6 @@ if archivos:
                         "documento": nuevo_documento,
                         "vigencia": nuevo_vigencia,
                         "importancia": nuevo_importancia,
-                        # Conservamos los campos extra (cargo, consecutivo) si existen
                         "cargo": datos.get("cargo", ""),
                         "consecutivo": datos.get("consecutivo", "")
                     }
@@ -308,14 +303,13 @@ if archivos:
                         "tipo": doc["tipo"]
                     })
 
-            # Botón para guardar cambios dentro del formulario
             submitted = st.form_submit_button("💾 Guardar cambios")
             if submitted:
                 st.session_state["documentos_info"] = documentos_actualizados
-                st.success("✅ Datos actualizados correctamente. Ahora puedes enviar el correo.")
+                st.success("✅ Cambios guardados")
                 st.rerun()
 
-        # Después del formulario, mostramos la sección de envío
+        # Sección de envío
         if st.session_state["documentos_info"] is not None:
             st.divider()
             st.subheader("📧 Envío de correo")
@@ -336,7 +330,6 @@ if archivos:
                     "aprendiz-procesos2@clinicalaermitadecartagena.com"
                 ]
 
-                # Construir lista de nombres para el encabezado (viñetas)
                 lista_items = []
                 for doc in st.session_state["documentos_info"]:
                     datos = doc["datos"]
