@@ -87,12 +87,15 @@ def get_tipo_documento(codigo):
     return mapeo.get(prefijo, "documento")
 
 # ------------------------------------------------------------------
-# EXTRACCIÓN DE TEXTO
+# EXTRACCIÓN DE TEXTO (PDF solo primeras 3 páginas)
 # ------------------------------------------------------------------
 def extraer_texto_pdf(archivo):
     texto = ""
     pdf = PyPDF2.PdfReader(archivo)
-    for pagina in pdf.pages:
+    # Limitar a las primeras 3 páginas
+    for i, pagina in enumerate(pdf.pages):
+        if i >= 3:   # solo las primeras 3 páginas
+            break
         texto += pagina.extract_text() or ""
     return texto
 
@@ -358,7 +361,7 @@ if archivos:
                         <td style="background-color: #f4f4f4; padding: 10px 15px; border: 1px solid #cccccc; border-bottom: none;">
                             <strong style="font-size: 16px; color: #003366;">📄 {nombre_documento}</strong>
                         </td>
-                    </tr>
+                    </td>
                     <tr>
                         <td style="border: 1px solid #cccccc; padding: 0;">
                             <table width="100%" cellpadding="8" cellspacing="0" border="0" style="border-collapse: collapse;">
@@ -409,7 +412,7 @@ if archivos:
                             </td>
                             </tr>
                             <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
-                            <tr>
+                            </tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
                                     <tr><td style="padding:15px;">
@@ -429,7 +432,7 @@ if archivos:
                                         <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
                                     </td>
                                     </tr>
-                                </table>
+                                </tr>
                             </td>
                             </tr>
                             <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
@@ -440,8 +443,8 @@ if archivos:
                             </td>
                             </tr>
                         </table>
-                    </tr>
-                </table>
+                    </td>
+                </tr>
                 </table>
             </body>
             </html>
