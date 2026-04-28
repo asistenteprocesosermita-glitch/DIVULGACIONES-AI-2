@@ -318,7 +318,8 @@ if archivos:
                 "coord-procesos@clinicalaermitadecartagena.com",
                 "profesionalprocesos2@clinicalaermitadecartagena.com",
                 "asistente-procesos@clinicalaermitadecartagena.com",
-                "aprendiz-procesos2@clinicalaermitadecartagena.com"
+                "aprendiz-procesos2@clinicalaermitadecartagena.com",
+                "lidercalidad-procesos@clinicalaermitadecartagena.com"
             ]
 
             docs = st.session_state["documentos_info"]
