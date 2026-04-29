@@ -5,6 +5,7 @@ import google.generativeai as genai
 import smtplib
 import json
 import pandas as pd
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -128,7 +129,7 @@ def analizar_documento(texto, filename, es_manual=False):
         - "codigo": el código del documento (ej. R-TH-003). Si no aparece, déjalo vacío.
         - "version": busca la palabra "Consecutivo:" y extrae el número que le sigue (ej. 02). El valor debe ser "Consecutivo: XX".
         - "documento": el nombre completo del documento. Si encuentras "NOMBRE DEL CARGO", úsalo como nombre del documento.
-        - "vigencia": busca la fecha más reciente que aparece junto al consecutivo (en formato YYYY.MM.DD). Si hay varias, toma la última.
+        - "vigencia": busca la fecha más reciente (formato YYYY.MM.DD) que esté en el control de versiones y cuyo año sea 2026 o superior. Si hay varias, toma la última.
         - "importancia": un resumen de máximo 15 palabras.
         - "cargo": el nombre del cargo (busca "NOMBRE DEL CARGO").
         - "consecutivo": solo el número (ej. 01, 02) que aparece después de "Consecutivo:".
@@ -183,7 +184,6 @@ def analizar_documento(texto, filename, es_manual=False):
             # Formatear versión con "Consecutivo: XX" si se obtuvo consecutivo
             if datos.get("consecutivo"):
                 datos["version"] = f"Consecutivo: {datos['consecutivo']}"
-            # Para manuales, el código se forzará luego a "No Aplica" (se hará en el procesamiento)
         return datos
     except Exception as e:
         st.error(f"Error en IA: {e}")
@@ -254,14 +254,12 @@ if archivos and len(archivos) > 5:
     st.warning("Máximo 5 documentos. Solo se procesarán los primeros 5.")
     archivos = archivos[:5]
 
-# Clasificación manual/normal para cada archivo (aparece después de cargar)
 if archivos:
     st.subheader("📌 Clasificación de documentos")
     es_manual_dict = {}
     for idx, archivo in enumerate(archivos):
-        es_manual_dict[archivo.name] = st.checkbox(f"📄 {archivo.name} - Marcar si es Manual de funciones", key=f"manual_{idx}")
+        es_manual_dict[archivo.name] = st.checkbox(f"🔹 {archivo.name} - ¿Marcar como Manual de funciones?", key=f"manual_{idx}")
 
-    # Botón para procesar
     if st.button("🚀 Procesar documentos con IA", use_container_width=True):
         documentos_info = []
         progress_bar = st.progress(0)
@@ -309,7 +307,6 @@ if archivos:
         st.session_state["documentos_info"] = documentos_info
         st.rerun()
 
-    # Mostrar editores si ya hay datos procesados
     if "documentos_info" in st.session_state and st.session_state["documentos_info"] is not None:
         st.divider()
         st.subheader("✏️ Edición de datos extraídos")
@@ -318,8 +315,7 @@ if archivos:
         for idx, doc in enumerate(st.session_state["documentos_info"]):
             datos = doc["datos"]
             with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
-                # Checkbox para cambiar la clasificación sobre la marcha
-                es_manual_edit = st.checkbox("Es manual de funciones", value=doc.get("es_manual", False), key=f"edit_manual_{idx}")
+                es_manual_edit = st.checkbox("🔹 ¿Es manual de funciones?", value=doc.get("es_manual", False), key=f"edit_manual_{idx}")
                 if es_manual_edit != doc.get("es_manual", False):
                     doc["es_manual"] = es_manual_edit
                     if es_manual_edit:
@@ -367,14 +363,15 @@ if archivos:
                 st.stop()
 
             cc_fijos = [
-               
-                "asistente-procesos@clinicalaermitadecartagena.com"
-                
+                "coord-procesos@clinicalaermitadecartagena.com",
+                "profesional-procesos2@clinicalaermitadecartagena.com",
+                "asistente-procesos@clinicalaermitadecartagena.com",
+                "aprendiz-procesos2@clinicalaermitadecartagena.com",
+                "lidercalidad-procesos@clinicalaermitadecartagena.com"
             ]
 
             docs = st.session_state["documentos_info"]
 
-            # Construir lista de nombres en viñetas para el encabezado
             lista_items = []
             for doc in docs:
                 datos = doc["datos"]
@@ -390,7 +387,6 @@ if archivos:
             proceso_encabezado = docs[0]["datos"].get("proceso", "GESTIÓN DEL TALENTO HUMANO")
             operacion_texto = tipo_operacion_global.lower()
 
-            # Generar tarjetas HTML con la estructura de tabla corregida
             tarjetas_html = ""
             for doc in docs:
                 datos = doc["datos"]
@@ -409,7 +405,6 @@ if archivos:
                 vigencia = datos.get("vigencia", "") or "N/A"
                 importancia = datos.get("importancia", "") or "N/A"
 
-                # Tabla corregida: uso correcto de <tr> y <td>
                 tarjetas_html += f"""
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px;">
                     <tr>
@@ -455,41 +450,51 @@ if archivos:
                                 <div style="font-size:13px; border-top:1px solid rgba(255,255,255,0.3); padding-top:12px;">
                                     <strong>Documentos asociados:</strong><br>{lista_nombres_str}
                                 </div>
-                            </td></tr>
+                            </td>
+                            </tr>
                             <tr><td style="padding:20px 30px;">
                                 <table width="100%" style="background-color:#f0f7ff; border:1px solid {empresa_color};">
                                     <tr><td style="padding:15px; text-align:center; color:#004085;">
                                         El equipo de <strong>{proceso_encabezado}</strong> ha logrado un avance en la {operacion_texto} documental y gestión del conocimiento en su área.
-                                    </td></tr>
+                                    </td>
+                                    </tr>
                                 </table>
-                            </td></tr>
-                            <tr><td style="padding:10px 30px;">{tarjetas_html}</td></tr>
+                            </td>
+                            </tr>
+                            <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
+                            </tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
                                     <tr><td style="padding:15px;">
                                         <h4 style="margin:0 0 10px; color:#cc0000;">📢 SOCIALIZACIÓN Y APLICACIÓN INMEDIATA</h4>
                                         <ul><li>El líder del proceso es el responsable de socializar el documento con su equipo.</li>
                                         <li><strong style="color:#cc0000;">Conforme a lo establecido P-PRC-001 Procedimiento de Control Documental, el líder del Proceso tiene 3 días hábiles para la socialización del documento.</strong></li></ul>
-                                    </td></tr>
+                                    </td>
+                                    </tr>
                                 </table>
-                            </td></tr>
+                            </td>
+                            </tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#f8f9fa; border:1px solid #d1d5db;">
                                     <tr><td style="padding:20px; text-align:center;">
                                         <h3 style="margin:0 0 10px; color:#003366;">Acceso a Plataforma IT SOLUTION</h3>
                                         <p><strong>Ruta:</strong> Gestión Documental → Consultar Documentos → (Seleccionar empresa) → Filtrar por nombre.</p>
                                         <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
-                                    </td></tr>
+                                    </td>
+                                    </tr>
                                 </table>
-                            </td></tr>
+                            </td>
+                            </tr>
                             <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
                                 <p style="font-weight:bold; color:#003366;">¡HAZ PARTE DEL CAMBIO!</p>
                                 <p>#TransformaciónDigitalDeLosProcesos</p>
                                 <p><em>Este correo es un desarrollo automático con inteligencia artificial, por favor no responder a este mensaje.</em></p>
                                 <p>Si desea comunicarse con el área de procesos, escriba a:<br>{', '.join(cc_fijos)}</p>
-                            </td></tr>
+                            </td>
+                            </tr>
                         </table>
-                    </td></tr>
+                    </td>
+                </tr>
                 </table>
             </body>
             </html>
