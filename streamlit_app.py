@@ -121,39 +121,38 @@ def extraer_texto_excel(archivo):
 def analizar_documento(texto, filename, es_manual=False):
     if es_manual:
         prompt = f"""
-        Eres un asistente que extrae información de MANUALES DE FUNCIONES de una clínica.
-        El documento es un manual de funciones.
-        Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
-        - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
-        - "codigo": el código del documento (ej. R-TH-003). Si no aparece, déjalo vacío.
-        - "documento": el nombre completo del documento. Si encuentras "NOMBRE DEL CARGO", úsalo como nombre del documento.
-        - "importancia": un resumen de máximo 15 palabras.
-        - "cargo": el nombre del cargo (busca "NOMBRE DEL CARGO").
-        - NOTA: NO extraigas "version", "vigencia" ni "consecutivo". Esos campos los completará el usuario manualmente.
+        Eres un asistente que extrae información de MANUALES DE FUNCIONES.
+        Devuelve ÚNICAMENTE un JSON válido con las claves:
+        - "proceso": (debe coincidir con la lista)
+        - "codigo": código del manual (ej. R-TH-003). Si no aparece, déjalo vacío.
+        - "documento": nombre del documento. Si encuentras "NOMBRE DEL CARGO", úsalo.
+        - "importancia": resumen máximo 15 palabras.
+        - "cargo": nombre del cargo (busca "NOMBRE DEL CARGO").
+        NO extraigas "version", "vigencia" ni "consecutivo".
 
         Lista de procesos:
         {', '.join(PROCESOS)}
 
-        Texto del documento:
+        Texto:
         {texto[:15000]}
         """
     else:
         prompt = f"""
-        Eres un asistente que extrae información de documentos internos de una clínica.
-        Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
-        - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
-        - "codigo": el código del documento (ej. M-SST-003)
-        - "version": la versión del documento (formato XX, ej. 01, 02)
-        - "documento": el nombre completo del documento
-        - "vigencia": la fecha desde que aplica (formato YYYY.MM.DD)
-        - "importancia": un resumen de máximo 15 palabras
-        - "cargo": (opcional, solo si aparece)
+        Eres un asistente que extrae información de documentos internos.
+        Devuelve ÚNICAMENTE un JSON válido con las claves:
+        - "proceso": (debe coincidir con la lista)
+        - "codigo": código del documento
+        - "version": versión (formato XX)
+        - "documento": nombre completo
+        - "vigencia": fecha (YYYY.MM.DD)
+        - "importancia": resumen máximo 15 palabras
+        - "cargo": (opcional)
         - "consecutivo": (opcional)
 
         Lista de procesos:
         {', '.join(PROCESOS)}
 
-        Texto del documento:
+        Texto:
         {texto[:10000]}
         """
 
@@ -168,30 +167,26 @@ def analizar_documento(texto, filename, es_manual=False):
         else:
             raise ValueError("No se encontró JSON en la respuesta")
 
-        # Sanitizar None
         for clave in ["proceso", "codigo", "version", "documento", "vigencia", "importancia", "cargo", "consecutivo"]:
             if datos.get(clave) is None:
                 datos[clave] = ""
 
         if es_manual:
-            # Si no se extrajo cargo, usar el nombre del archivo como respaldo
             if not datos.get("cargo") and not datos.get("documento"):
                 base = os.path.splitext(os.path.basename(filename))[0]
                 datos["cargo"] = base
                 datos["documento"] = base
             elif datos.get("cargo") and not datos.get("documento"):
                 datos["documento"] = datos["cargo"]
-            # Para manuales, forzamos que versión y vigencia estén vacías (el usuario las llenará manualmente)
+            # Forzar código a "No Aplica" en el momento de guardar (lo haremos después, aquí solo aseguramos vacío)
             datos["version"] = ""
             datos["vigencia"] = ""
             datos["consecutivo"] = ""
         return datos
     except Exception as e:
         st.error(f"Error en IA: {e}")
-        return {
-            "proceso": "", "codigo": "", "version": "", "documento": "",
-            "vigencia": "", "importancia": "", "cargo": "", "consecutivo": ""
-        }
+        return {"proceso": "", "codigo": "", "version": "", "documento": "",
+                "vigencia": "", "importancia": "", "cargo": "", "consecutivo": ""}
 
 # ------------------------------------------------------------------
 # ENVÍO DE CORREO
@@ -223,7 +218,7 @@ st.set_page_config(page_title="Divulgaciones AI", layout="centered", page_icon="
 st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
         <h1 style="font-size: 2.5rem; font-weight: bold; color: #003366;">📢 DIVULGACIONES AUTOMÁTICAS</h1>
-        <p style="font-size: 1rem; color: #555;">Carga hasta 5 documentos (PDF o Excel). La IA extraerá los datos y podrás editarlos antes de enviar el correo.</p>
+        <p style="font-size: 1rem; color: #555;">Carga hasta 5 documentos (PDF o Excel). Marca los Manuales de funciones para que el código se fije en "No Aplica" y puedas completar versión y vigencia manualmente.</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -243,7 +238,7 @@ tipo_operacion_global = st.radio(
 )
 
 # ------------------------------------------------------------------
-# Carga de archivos y clasificación (manual o normal)
+# Carga de archivos y clasificación
 # ------------------------------------------------------------------
 archivos = st.file_uploader(
     "Selecciona los documentos (máx 5, PDF o Excel)",
@@ -256,10 +251,10 @@ if archivos and len(archivos) > 5:
     archivos = archivos[:5]
 
 if archivos:
-    st.subheader("📌 Clasificación de documentos")
+    st.subheader("📌 Clasificación")
     es_manual_dict = {}
     for idx, archivo in enumerate(archivos):
-        es_manual_dict[archivo.name] = st.checkbox(f"🔹 {archivo.name} - ¿Marcar como Manual de funciones? (la versión y vigencia deberán llenarse manualmente)", key=f"manual_{idx}")
+        es_manual_dict[archivo.name] = st.checkbox(f"🔹 {archivo.name} - ¿Manual de funciones? (código = No Aplica, versión/vigencia manual)", key=f"manual_{idx}")
 
     if st.button("🚀 Procesar documentos con IA", use_container_width=True):
         documentos_info = []
@@ -292,10 +287,9 @@ if archivos:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 datos = {}
 
-            # Si es manual, forzar código a "No Aplica" (si no tiene código)
+            # Si es manual, forzar código a "No Aplica"
             if es_manual:
-                if not datos.get("codigo"):
-                    datos["codigo"] = "No Aplica"
+                datos["codigo"] = "No Aplica"
 
             documentos_info.append({
                 "nombre": archivo.name,
@@ -312,19 +306,21 @@ if archivos:
     if "documentos_info" in st.session_state and st.session_state["documentos_info"] is not None:
         st.divider()
         st.subheader("✏️ Edición de datos extraídos")
-        st.info("✏️ Los cambios se guardan automáticamente. Puedes editar todos los campos y luego hacer clic en 'Enviar correo'.")
+        st.info("✏️ Los cambios se guardan automáticamente. Edita los campos y luego haz clic en 'Enviar correo'.")
 
         for idx, doc in enumerate(st.session_state["documentos_info"]):
             datos = doc["datos"]
             with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
-                # Mostrar si es manual y permitir cambiar la clasificación (esto actualizará los campos)
-                es_manual_edit = st.checkbox("🔹 ¿Es manual de funciones? (versión y vigencia se llenan manualmente)", value=doc.get("es_manual", False), key=f"edit_manual_{idx}")
+                es_manual_edit = st.checkbox("Manual de funciones", value=doc.get("es_manual", False), key=f"edit_manual_{idx}")
                 if es_manual_edit != doc.get("es_manual", False):
                     doc["es_manual"] = es_manual_edit
                     if es_manual_edit:
                         datos["codigo"] = "No Aplica"
                         datos["version"] = ""
                         datos["vigencia"] = ""
+                    else:
+                        # Si se desmarca, no forzamos nada, el usuario editará
+                        pass
                     st.session_state["documentos_info"][idx]["es_manual"] = es_manual_edit
                     st.session_state["documentos_info"][idx]["datos"] = datos
                     st.rerun()
@@ -465,7 +461,7 @@ if archivos:
                             </td>
                             </tr>
                             <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
-                            <tr>
+                            </tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
                                     <tr><td style="padding:15px;">
@@ -485,7 +481,7 @@ if archivos:
                                         <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
                                     </td>
                                     </tr>
-                                </tr>
+                                </table>
                             </td>
                             </tr>
                             <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
@@ -498,7 +494,7 @@ if archivos:
                         </table>
                     </td>
                 </tr>
-                </tr>
+                </table>
             </body>
             </html>
             """
