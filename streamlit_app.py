@@ -5,7 +5,6 @@ import google.generativeai as genai
 import smtplib
 import json
 import pandas as pd
-import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -117,22 +116,20 @@ def extraer_texto_excel(archivo):
         raise Exception(f"Error al leer Excel: {e}")
 
 # ------------------------------------------------------------------
-# ANÁLISIS CON GEMINI (con tratamiento especial para manuales)
+# ANÁLISIS CON GEMINI (para manuales NO extrae versión ni vigencia)
 # ------------------------------------------------------------------
 def analizar_documento(texto, filename, es_manual=False):
     if es_manual:
         prompt = f"""
         Eres un asistente que extrae información de MANUALES DE FUNCIONES de una clínica.
-        El documento es un manual de funciones. Presta especial atención a la última página donde suele estar el control de versiones.
+        El documento es un manual de funciones.
         Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
         - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
         - "codigo": el código del documento (ej. R-TH-003). Si no aparece, déjalo vacío.
-        - "version": busca la palabra "Consecutivo:" y extrae el número que le sigue (ej. 02). El valor debe ser "Consecutivo: XX".
         - "documento": el nombre completo del documento. Si encuentras "NOMBRE DEL CARGO", úsalo como nombre del documento.
-        - "vigencia": busca la fecha más reciente (formato YYYY.MM.DD) que esté en el control de versiones y cuyo año sea 2026 o superior. Si hay varias, toma la última.
         - "importancia": un resumen de máximo 15 palabras.
         - "cargo": el nombre del cargo (busca "NOMBRE DEL CARGO").
-        - "consecutivo": solo el número (ej. 01, 02) que aparece después de "Consecutivo:".
+        - NOTA: NO extraigas "version", "vigencia" ni "consecutivo". Esos campos los completará el usuario manualmente.
 
         Lista de procesos:
         {', '.join(PROCESOS)}
@@ -145,13 +142,13 @@ def analizar_documento(texto, filename, es_manual=False):
         Eres un asistente que extrae información de documentos internos de una clínica.
         Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
         - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
-        - "codigo": el código del documento (ej. M-SST-003, R-TH-003, etc.)
-        - "version": la versión del documento (formato XX, ej. 01, 02).
-        - "documento": el nombre completo del documento.
-        - "vigencia": la fecha desde que aplica (formato YYYY.MM.DD).
-        - "importancia": un resumen de máximo 15 palabras.
-        - "cargo": (opcional) si es un manual de funciones, extrae el nombre del cargo, sino déjalo vacío.
-        - "consecutivo": (opcional) solo para manuales.
+        - "codigo": el código del documento (ej. M-SST-003)
+        - "version": la versión del documento (formato XX, ej. 01, 02)
+        - "documento": el nombre completo del documento
+        - "vigencia": la fecha desde que aplica (formato YYYY.MM.DD)
+        - "importancia": un resumen de máximo 15 palabras
+        - "cargo": (opcional, solo si aparece)
+        - "consecutivo": (opcional)
 
         Lista de procesos:
         {', '.join(PROCESOS)}
@@ -178,12 +175,16 @@ def analizar_documento(texto, filename, es_manual=False):
 
         if es_manual:
             # Si no se extrajo cargo, usar el nombre del archivo como respaldo
-            if not datos.get("cargo"):
+            if not datos.get("cargo") and not datos.get("documento"):
                 base = os.path.splitext(os.path.basename(filename))[0]
                 datos["cargo"] = base
-            # Formatear versión con "Consecutivo: XX" si se obtuvo consecutivo
-            if datos.get("consecutivo"):
-                datos["version"] = f"Consecutivo: {datos['consecutivo']}"
+                datos["documento"] = base
+            elif datos.get("cargo") and not datos.get("documento"):
+                datos["documento"] = datos["cargo"]
+            # Para manuales, forzamos que versión y vigencia estén vacías (el usuario las llenará manualmente)
+            datos["version"] = ""
+            datos["vigencia"] = ""
+            datos["consecutivo"] = ""
         return datos
     except Exception as e:
         st.error(f"Error en IA: {e}")
@@ -258,7 +259,7 @@ if archivos:
     st.subheader("📌 Clasificación de documentos")
     es_manual_dict = {}
     for idx, archivo in enumerate(archivos):
-        es_manual_dict[archivo.name] = st.checkbox(f"🔹 {archivo.name} - ¿Marcar como Manual de funciones?", key=f"manual_{idx}")
+        es_manual_dict[archivo.name] = st.checkbox(f"🔹 {archivo.name} - ¿Marcar como Manual de funciones? (la versión y vigencia deberán llenarse manualmente)", key=f"manual_{idx}")
 
     if st.button("🚀 Procesar documentos con IA", use_container_width=True):
         documentos_info = []
@@ -291,9 +292,10 @@ if archivos:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 datos = {}
 
-            # Si es manual, forzar código a "No Aplica"
+            # Si es manual, forzar código a "No Aplica" (si no tiene código)
             if es_manual:
-                datos["codigo"] = "No Aplica"
+                if not datos.get("codigo"):
+                    datos["codigo"] = "No Aplica"
 
             documentos_info.append({
                 "nombre": archivo.name,
@@ -315,13 +317,14 @@ if archivos:
         for idx, doc in enumerate(st.session_state["documentos_info"]):
             datos = doc["datos"]
             with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
-                es_manual_edit = st.checkbox("🔹 ¿Es manual de funciones?", value=doc.get("es_manual", False), key=f"edit_manual_{idx}")
+                # Mostrar si es manual y permitir cambiar la clasificación (esto actualizará los campos)
+                es_manual_edit = st.checkbox("🔹 ¿Es manual de funciones? (versión y vigencia se llenan manualmente)", value=doc.get("es_manual", False), key=f"edit_manual_{idx}")
                 if es_manual_edit != doc.get("es_manual", False):
                     doc["es_manual"] = es_manual_edit
                     if es_manual_edit:
                         datos["codigo"] = "No Aplica"
-                        if datos.get("cargo"):
-                            datos["documento"] = datos["cargo"]
+                        datos["version"] = ""
+                        datos["vigencia"] = ""
                     st.session_state["documentos_info"][idx]["es_manual"] = es_manual_edit
                     st.session_state["documentos_info"][idx]["datos"] = datos
                     st.rerun()
@@ -462,7 +465,7 @@ if archivos:
                             </td>
                             </tr>
                             <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
-                            </tr>
+                            <tr>
                             <tr><td style="padding:0 30px 20px 30px;">
                                 <table width="100%" style="background-color:#fff3f3; border-left:4px solid #cc0000;">
                                     <tr><td style="padding:15px;">
@@ -482,7 +485,7 @@ if archivos:
                                         <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
                                     </td>
                                     </tr>
-                                </table>
+                                </tr>
                             </td>
                             </tr>
                             <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
@@ -495,7 +498,7 @@ if archivos:
                         </table>
                     </td>
                 </tr>
-                </table>
+                </tr>
             </body>
             </html>
             """
