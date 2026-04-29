@@ -87,16 +87,24 @@ def get_tipo_documento(codigo):
     return mapeo.get(prefijo, "documento")
 
 # ------------------------------------------------------------------
-# EXTRACCIÓN DE TEXTO (PDF solo primeras 3 páginas)
+# EXTRACCIÓN DE TEXTO (con control de páginas)
 # ------------------------------------------------------------------
-def extraer_texto_pdf(archivo):
+def extraer_texto_pdf(archivo, leer_completo=False):
+    """
+    Extrae texto del PDF. Si leer_completo es True, lee todas las páginas,
+    de lo contrario solo las primeras 3.
+    """
     texto = ""
     pdf = PyPDF2.PdfReader(archivo)
-    # Limitar a las primeras 3 páginas
-    for i, pagina in enumerate(pdf.pages):
-        if i >= 3:   # solo las primeras 3 páginas
-            break
-        texto += pagina.extract_text() or ""
+    total_paginas = len(pdf.pages)
+    if leer_completo:
+        for pagina in pdf.pages:
+            texto += pagina.extract_text() or ""
+    else:
+        for i, pagina in enumerate(pdf.pages):
+            if i >= 3:
+                break
+            texto += pagina.extract_text() or ""
     return texto
 
 def extraer_texto_excel(archivo):
@@ -113,27 +121,49 @@ def extraer_texto_excel(archivo):
         raise Exception(f"Error al leer Excel: {e}")
 
 # ------------------------------------------------------------------
-# ANÁLISIS CON GEMINI
+# ANÁLISIS CON GEMINI (con indicación de si es manual)
 # ------------------------------------------------------------------
-def analizar_documento(texto, filename):
-    prompt = f"""
-    Eres un asistente que extrae información de documentos internos de una clínica.
-    Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
-    - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
-    - "codigo": el código del documento (ej. M-SST-003, R-TH-003, etc.)
-    - "version": la versión del documento (formato XX, ej. 01, 02). Si es un manual de funciones, extrae el valor después de "Consecutivo:".
-    - "documento": el nombre completo del documento.
-    - "vigencia": la fecha desde que aplica (formato YYYY.MM.DD). Si es manual de funciones, extrae la fecha más reciente del control de versiones.
-    - "importancia": un resumen de máximo 15 palabras.
-    - "cargo": si el documento es un manual de funciones (código comienza con R-TH-), extrae el nombre del cargo al que pertenece. Si no, puedes omitirlo.
-    - "consecutivo": si el documento es manual de funciones, extrae el número de consecutivo (ej. 01, 02) tal como aparece junto a "Consecutivo:".
+def analizar_documento(texto, filename, es_manual=False):
+    # Ajuste del prompt para manuales: pedir explícitamente cargo, consecutivo y vigencia desde última página
+    if es_manual:
+        prompt = f"""
+        Eres un asistente que extrae información de manuales de funciones de una clínica.
+        El documento es un MANUAL DE FUNCIONES. Presta especial atención al final del documento.
+        Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
+        - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
+        - "codigo": el código del documento (ej. R-TH-003). Si no aparece, déjalo vacío.
+        - "version": extrae el número de CONSECUTIVO que aparece en la última página (formato XX). Si aparece "Consecutivo: 02", devuelve "Consecutivo: 02".
+        - "documento": el nombre completo del documento. Si encuentras "NOMBRE DEL CARGO", úsalo como nombre del documento.
+        - "vigencia": la fecha más reciente que aparece en la última página, normalmente en una columna llamada "FECHA". Formato YYYY.MM.DD.
+        - "importancia": un resumen de máximo 15 palabras.
+        - "cargo": el nombre del cargo al que pertenece el manual (búscalo en el texto, especialmente donde diga "NOMBRE DEL CARGO").
+        - "consecutivo": el número de consecutivo (ej. 01, 02) que aparece junto a "Consecutivo:" en la última página.
 
-    Lista de procesos:
-    {', '.join(PROCESOS)}
+        Lista de procesos:
+        {', '.join(PROCESOS)}
 
-    Texto del documento:
-    {texto[:10000]}
-    """
+        Texto del documento:
+        {texto[:15000]}
+        """
+    else:
+        prompt = f"""
+        Eres un asistente que extrae información de documentos internos de una clínica.
+        Devuelve ÚNICAMENTE un objeto JSON válido con las siguientes claves:
+        - "proceso": el proceso responsable (debe coincidir exactamente con la lista)
+        - "codigo": el código del documento (ej. M-SST-003, R-TH-003, etc.)
+        - "version": la versión del documento (formato XX, ej. 01, 02). Si es un manual de funciones, extrae el valor después de "Consecutivo:".
+        - "documento": el nombre completo del documento.
+        - "vigencia": la fecha desde que aplica (formato YYYY.MM.DD). Si es manual de funciones, extrae la fecha más reciente del control de versiones.
+        - "importancia": un resumen de máximo 15 palabras.
+        - "cargo": si el documento es un manual de funciones (código comienza con R-TH-), extrae el nombre del cargo al que pertenece. Si no, puedes omitirlo.
+        - "consecutivo": si el documento es manual de funciones, extrae el número de consecutivo (ej. 01, 02) tal como aparece junto a "Consecutivo:".
+
+        Lista de procesos:
+        {', '.join(PROCESOS)}
+
+        Texto del documento:
+        {texto[:10000]}
+        """
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
@@ -150,14 +180,15 @@ def analizar_documento(texto, filename):
             if datos.get(clave) is None:
                 datos[clave] = ""
         
-        # Ajustes para manuales
-        codigo = datos.get("codigo", "")
-        if codigo.upper().startswith("R-TH-"):
-            if not datos.get("cargo"):
-                base = os.path.splitext(os.path.basename(filename))[0]
-                datos["cargo"] = base
-            if datos.get("consecutivo"):
-                datos["version"] = f"Consecutivo: {datos['consecutivo']}"
+        # Si es manual y no se extrajo cargo, usar el nombre del archivo como respaldo
+        if es_manual and not datos.get("cargo"):
+            base = os.path.splitext(os.path.basename(filename))[0]
+            datos["cargo"] = base
+        
+        # Para manuales, armar la version con "Consecutivo: XX"
+        if es_manual and datos.get("consecutivo"):
+            datos["version"] = f"Consecutivo: {datos['consecutivo']}"
+        
         return datos
     except Exception as e:
         st.error(f"Error en IA: {e}")
@@ -196,7 +227,7 @@ st.set_page_config(page_title="Divulgaciones AI", layout="centered", page_icon="
 st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
         <h1 style="font-size: 2.5rem; font-weight: bold; color: #003366;">📢 DIVULGACIONES AUTOMÁTICAS</h1>
-        <p style="font-size: 1rem; color: #555;">Carga hasta 5 documentos (PDF o Excel). La IA extraerá los datos y podrás editarlos antes de enviar el correo.</p>
+        <p style="font-size: 1rem; color: #555;">Carga hasta 5 documentos (PDF o Excel). Marca los que sean Manuales de funciones para una extracción especial (lectura completa, código "No Aplica", nombre desde "NOMBRE DEL CARGO", versión y vigencia desde última página).</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -225,9 +256,12 @@ if archivos and len(archivos) > 5:
     st.warning("Máximo 5 documentos. Solo se procesarán los primeros 5.")
     archivos = archivos[:5]
 
+# ------- Selección de manuales antes de procesar -------
 if archivos:
-    if "documentos_info" not in st.session_state:
-        st.session_state["documentos_info"] = None
+    st.subheader("📌 Clasificación de documentos")
+    manual_flags = {}
+    for idx, archivo in enumerate(archivos):
+        manual_flags[archivo.name] = st.checkbox(f"📄 {archivo.name} - ¿Es un Manual de funciones?", key=f"manual_{idx}")
 
     if st.button("🚀 Procesar documentos con IA", use_container_width=True):
         documentos_info = []
@@ -236,11 +270,14 @@ if archivos:
 
         for i, archivo in enumerate(archivos):
             status_text.text(f"Procesando {archivo.name}...")
+            es_manual = manual_flags.get(archivo.name, False)
             extension = os.path.splitext(archivo.name)[1].lower()
             try:
                 if extension == ".pdf":
-                    texto = extraer_texto_pdf(archivo)
+                    # Leer todo el PDF si es manual, solo 3 primeras páginas si no
+                    texto = extraer_texto_pdf(archivo, leer_completo=es_manual)
                 elif extension in [".xlsx", ".xls"]:
+                    # Para Excel, siempre se lee completo; no hay paginado
                     texto = extraer_texto_excel(archivo)
                 else:
                     st.error(f"Formato no soportado: {archivo.name}")
@@ -254,15 +291,20 @@ if archivos:
                 continue
 
             try:
-                datos = analizar_documento(texto, archivo.name)
+                datos = analizar_documento(texto, archivo.name, es_manual=es_manual)
             except Exception as e:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 datos = {}
 
+            # Si es manual, forzamos el código a "No Aplica" (pero el usuario podrá cambiarlo después)
+            if es_manual:
+                datos["codigo"] = "No Aplica"
+
             documentos_info.append({
                 "nombre": archivo.name,
                 "datos": datos,
-                "tipo": tipo_operacion_global
+                "tipo": tipo_operacion_global,
+                "es_manual": es_manual
             })
             progress_bar.progress((i+1)/len(archivos))
 
@@ -270,7 +312,7 @@ if archivos:
         st.session_state["documentos_info"] = documentos_info
         st.rerun()
 
-    if st.session_state["documentos_info"] is not None:
+    if "documentos_info" in st.session_state and st.session_state["documentos_info"] is not None:
         st.divider()
         st.subheader("✏️ Edición de datos extraídos")
         st.info("✏️ Los cambios se guardan automáticamente. Puedes editar todos los campos y luego hacer clic en 'Enviar correo'.")
@@ -278,6 +320,24 @@ if archivos:
         for idx, doc in enumerate(st.session_state["documentos_info"]):
             datos = doc["datos"]
             with st.expander(f"📄 Documento {idx+1}: {doc['nombre']}", expanded=True):
+                # Mostrar si es manual y permitir cambiar la clasificación
+                es_manual_edit = st.checkbox("Es manual de funciones", value=doc.get("es_manual", False), key=f"edit_manual_{idx}")
+                # Si se cambia la clasificación, actualizar automáticamente código y documento
+                if es_manual_edit != doc.get("es_manual", False):
+                    doc["es_manual"] = es_manual_edit
+                    if es_manual_edit:
+                        # Al marcar como manual, forzar código a "No Aplica" y usar cargo como nombre si existe
+                        datos["codigo"] = "No Aplica"
+                        if datos.get("cargo"):
+                            datos["documento"] = datos["cargo"]
+                    else:
+                        # Si se desmarca, no forzamos valores, el usuario editará manualmente
+                        pass
+                    # Actualizar en session_state
+                    st.session_state["documentos_info"][idx]["es_manual"] = es_manual_edit
+                    st.session_state["documentos_info"][idx]["datos"] = datos
+                    st.rerun()
+
                 proceso_sugerido = datos.get("proceso", "").strip()
                 proceso_norm = normalizar_texto(proceso_sugerido)
                 try:
@@ -291,6 +351,7 @@ if archivos:
                 nuevo_vigencia = st.text_input("Vigencia (YYYY.MM.DD)", datos.get("vigencia", ""), key=f"vigencia_{idx}")
                 nuevo_importancia = st.text_area("Importancia", datos.get("importancia", ""), key=f"importancia_{idx}", height=80)
 
+                # Actualizar los datos en session_state
                 st.session_state["documentos_info"][idx]["datos"] = {
                     "proceso": nuevo_proceso,
                     "codigo": nuevo_codigo,
@@ -315,11 +376,9 @@ if archivos:
                 st.stop()
 
             cc_fijos = [
-                "coord-procesos@clinicalaermitadecartagena.com",
-                "profesional-procesos2@clinicalaermitadecartagena.com",
-                "asistente-procesos@clinicalaermitadecartagena.com",
-                "aprendiz-procesos2@clinicalaermitadecartagena.com",
-                "lidercalidad-procesos@clinicalaermitadecartagena.com"
+    
+                "asistente-procesos@clinicalaermitadecartagena.com"
+            
             ]
 
             docs = st.session_state["documentos_info"]
@@ -328,7 +387,8 @@ if archivos:
             for doc in docs:
                 datos = doc["datos"]
                 codigo = str(datos.get("codigo", ""))
-                if codigo.upper().startswith("R-TH-"):
+                es_manual = doc.get("es_manual", False)
+                if es_manual:
                     nombre = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                 else:
                     nombre = f"{codigo} {datos.get('documento', '')}".strip()
@@ -343,9 +403,10 @@ if archivos:
             for doc in docs:
                 datos = doc["datos"]
                 codigo = str(datos.get("codigo", ""))
+                es_manual = doc.get("es_manual", False)
                 tipo_doc = get_tipo_documento(codigo)
 
-                if codigo.upper().startswith("R-TH-"):
+                if es_manual:
                     nombre_documento = datos.get("cargo", os.path.splitext(doc["nombre"])[0])
                     codigo_tabla = "No Aplica"
                 else:
@@ -362,7 +423,7 @@ if archivos:
                         <td style="background-color: #f4f4f4; padding: 10px 15px; border: 1px solid #cccccc; border-bottom: none;">
                             <strong style="font-size: 16px; color: #003366;">📄 {nombre_documento}</strong>
                         </td>
-                    </td>
+                    </tr>
                     <tr>
                         <td style="border: 1px solid #cccccc; padding: 0;">
                             <table width="100%" cellpadding="8" cellspacing="0" border="0" style="border-collapse: collapse;">
@@ -374,7 +435,7 @@ if archivos:
                                     <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
                                     <td style="border-bottom: 1px solid #dddddd;">{codigo_tabla}</td>
                                 </tr>
-                                <tr>
+                                <td>
                                     <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VIGENCIA</td>
                                     <td style="border-bottom: 1px solid #dddddd;">{vigencia}</td>
                                 </tr>
@@ -384,7 +445,7 @@ if archivos:
                                 </tr>
                             </table>
                         </td>
-                    </tr>
+                    </table>
                 </table>
                 """
 
@@ -433,7 +494,7 @@ if archivos:
                                         <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
                                     </td>
                                     </tr>
-                                </tr>
+                                </table>
                             </td>
                             </tr>
                             <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
