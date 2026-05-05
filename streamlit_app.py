@@ -5,7 +5,7 @@ import google.generativeai as genai
 import smtplib
 import json
 import pandas as pd
-import requests  # <-- NUEVO: para llamar al Apps Script
+import requests
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -211,14 +211,11 @@ def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
         return False
 
 # ------------------------------------------------------------------
-# REGISTRO EN HOJA DE CÁLCULO (NUEVO)
+# REGISTRO EN HOJA DE CÁLCULO
 # ------------------------------------------------------------------
 APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbyaXP_B7TQgQHmuqEcAXCmg5o9xySIZVcNJNRX2sKHtTDI3NAsgJ-LebyZtVZfhijf2IA/exec"
 
 def registrar_envio(datos_registro):
-    """
-    Envía los datos del documento a la hoja de cálculo mediante Apps Script.
-    """
     try:
         response = requests.post(APPSCRIPT_URL, json=datos_registro, timeout=10)
         if response.status_code == 200:
@@ -390,7 +387,7 @@ if archivos:
 
             docs = st.session_state["documentos_info"]
 
-            # Preparar lista de nombres para el encabezado del correo
+            # Preparar lista de nombres para el encabezado del correo (HTML)
             lista_items = []
             for doc in docs:
                 datos = doc["datos"]
@@ -438,7 +435,7 @@ if archivos:
                                     <td width="30%" style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">VERSIÓN</td>
                                     <td width="70%" style="border-bottom: 1px solid #dddddd;">{version}</td>
                                 </tr>
-                                <tr>
+                                <td>
                                     <td style="background-color: {empresa_color}; color: white; font-weight: bold; border-bottom: 1px solid #dddddd;">CÓDIGO</td>
                                     <td style="border-bottom: 1px solid #dddddd;">{codigo_tabla}</td>
                                 </tr>
@@ -453,7 +450,7 @@ if archivos:
                             </table>
                         </td>
                     </tr>
-                </table>
+                </tr>
                 """
 
             cuerpo_html = f"""
@@ -478,7 +475,6 @@ if archivos:
                                     </td>
                                     </tr>
                                 </table>
-                            </td>
                             </tr>
                             <tr><td style="padding:10px 30px;">{tarjetas_html}</td>
                             </tr>
@@ -501,7 +497,7 @@ if archivos:
                                         <a href="http://172.16.20.166:8080/ItSolution/index.jsp" style="background-color:{empresa_color}; color:#fff; padding:12px 24px; text-decoration:none; display:inline-block;">Abrir IT SOLUTION</a>
                                     </td>
                                     </tr>
-                                </table>
+                                </td>
                             </td>
                             </tr>
                             <tr><td style="background-color:#f8f9fa; padding:20px; text-align:center; font-size:12px; color:#777; border-top:1px dashed #ccc;">
@@ -519,12 +515,35 @@ if archivos:
             </html>
             """
 
-            asunto = f"Divulgación de Documentos - {datetime.now().strftime('%Y.%m.%d')} - {empresa_seleccionada}"
+            # ----------------------------------------------------------
+            # CONSTRUCCIÓN DEL ASUNTO CON TODOS LOS DOCUMENTOS
+            # ----------------------------------------------------------
+            # Crear una lista de strings "CÓDIGO NOMBRE" para cada documento
+            partes_asunto = []
+            for doc in docs:
+                datos = doc["datos"]
+                codigo = datos.get("codigo", "")
+                nombre_doc = datos.get("documento", "")
+                if not nombre_doc and doc.get("es_manual", False):
+                    nombre_doc = datos.get("cargo", "")
+                if codigo and nombre_doc:
+                    partes_asunto.append(f"{codigo} {nombre_doc}")
+                elif codigo:
+                    partes_asunto.append(codigo)
+                elif nombre_doc:
+                    partes_asunto.append(nombre_doc)
+                else:
+                    partes_asunto.append("Documento sin título")
+            # Unir con " I "
+            documentos_str = " I ".join(partes_asunto)
+            fecha_str = datetime.now().strftime('%Y.%m.%d')
+            asunto = f"Divulgación de Documentos - {fecha_str} - {empresa_seleccionada} I {documentos_str}"
+            # ----------------------------------------------------------
 
             with st.spinner("Enviando correo..."):
                 if enviar_correo(destinatarios_lista, cc_fijos, asunto, cuerpo_html):
                     st.success("✅ Correo enviado correctamente.")
-                    # --- REGISTRO EN HOJA DE CÁLCULO (NUEVO) ---
+                    # Registro en hoja de cálculo
                     for doc in docs:
                         datos = doc["datos"]
                         registro = {
@@ -540,6 +559,5 @@ if archivos:
                             "esManual": doc.get("es_manual", False)
                         }
                         registrar_envio(registro)
-                    # -------------------------------------------
                 else:
                     st.error("❌ Falló el envío del correo. No se registró.")
