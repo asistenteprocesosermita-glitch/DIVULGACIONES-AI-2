@@ -385,11 +385,7 @@ if archivos:
                 st.stop()
 
             cc_fijos = [
-                "coord-procesos@clinicalaermitadecartagena.com",
-                "profesional-procesos2@clinicalaermitadecartagena.com",
                 "asistente-procesos@clinicalaermitadecartagena.com",
-                "aprendiz-procesos2@clinicalaermitadecartagena.com",
-                "lidercalidad-procesos@clinicalaermitadecartagena.com"
             ]
 
             docs = st.session_state["documentos_info"]
