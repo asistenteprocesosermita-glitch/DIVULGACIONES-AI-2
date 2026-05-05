@@ -5,6 +5,7 @@ import google.generativeai as genai
 import smtplib
 import json
 import pandas as pd
+import requests  # <-- NUEVO: para llamar al Apps Script
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -178,7 +179,6 @@ def analizar_documento(texto, filename, es_manual=False):
                 datos["documento"] = base
             elif datos.get("cargo") and not datos.get("documento"):
                 datos["documento"] = datos["cargo"]
-            # Forzar código a "No Aplica" en el momento de guardar (lo haremos después, aquí solo aseguramos vacío)
             datos["version"] = ""
             datos["vigencia"] = ""
             datos["consecutivo"] = ""
@@ -208,6 +208,31 @@ def enviar_correo(destinatarios, cc_list, asunto, cuerpo_html):
         return True
     except Exception as e:
         st.error(f"Error al enviar correo: {e}")
+        return False
+
+# ------------------------------------------------------------------
+# REGISTRO EN HOJA DE CÁLCULO (NUEVO)
+# ------------------------------------------------------------------
+APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbyaXP_B7TQgQHmuqEcAXCmg5o9xySIZVcNJNRX2sKHtTDI3NAsgJ-LebyZtVZfhijf2IA/exec"
+
+def registrar_envio(datos_registro):
+    """
+    Envía los datos del documento a la hoja de cálculo mediante Apps Script.
+    """
+    try:
+        response = requests.post(APPSCRIPT_URL, json=datos_registro, timeout=10)
+        if response.status_code == 200:
+            res_json = response.json()
+            if res_json.get("success"):
+                return True
+            else:
+                st.warning(f"⚠️ Apps Script respondió: {res_json.get('error', 'Error desconocido')}")
+                return False
+        else:
+            st.warning(f"⚠️ Error HTTP {response.status_code} al registrar")
+            return False
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo registrar en la hoja: {e}")
         return False
 
 # ------------------------------------------------------------------
@@ -287,7 +312,6 @@ if archivos:
                 st.error(f"Error en IA para {archivo.name}: {e}")
                 datos = {}
 
-            # Si es manual, forzar código a "No Aplica"
             if es_manual:
                 datos["codigo"] = "No Aplica"
 
@@ -319,7 +343,6 @@ if archivos:
                         datos["version"] = ""
                         datos["vigencia"] = ""
                     else:
-                        # Si se desmarca, no forzamos nada, el usuario editará
                         pass
                     st.session_state["documentos_info"][idx]["es_manual"] = es_manual_edit
                     st.session_state["documentos_info"][idx]["datos"] = datos
@@ -371,6 +394,7 @@ if archivos:
 
             docs = st.session_state["documentos_info"]
 
+            # Preparar lista de nombres para el encabezado del correo
             lista_items = []
             for doc in docs:
                 datos = doc["datos"]
@@ -493,7 +517,7 @@ if archivos:
                             </tr>
                         </table>
                     </td>
-                </tr>
+                </table>
                 </table>
             </body>
             </html>
@@ -504,5 +528,22 @@ if archivos:
             with st.spinner("Enviando correo..."):
                 if enviar_correo(destinatarios_lista, cc_fijos, asunto, cuerpo_html):
                     st.success("✅ Correo enviado correctamente.")
+                    # --- REGISTRO EN HOJA DE CÁLCULO (NUEVO) ---
+                    for doc in docs:
+                        datos = doc["datos"]
+                        registro = {
+                            "empresa": empresa_seleccionada,
+                            "proceso": datos.get("proceso", ""),
+                            "codigo": datos.get("codigo", ""),
+                            "documento": datos.get("documento", ""),
+                            "version": datos.get("version", ""),
+                            "vigencia": datos.get("vigencia", ""),
+                            "importancia": datos.get("importancia", ""),
+                            "destinatarios": destinatarios_input,
+                            "operacion": tipo_operacion_global,
+                            "esManual": doc.get("es_manual", False)
+                        }
+                        registrar_envio(registro)
+                    # -------------------------------------------
                 else:
-                    st.error("❌ Falló el envío. Revisa la configuración SMTP.")
+                    st.error("❌ Falló el envío del correo. No se registró.")
